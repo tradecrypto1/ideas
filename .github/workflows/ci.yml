@@ -32,16 +32,6 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
 
-    - name: Publish Console Installer
-      run: |
-        dotnet publish src/ClaudeCodeInstaller.Console/ClaudeCodeInstaller.Console.csproj `
-          --configuration Release `
-          --runtime win-x64 `
-          --self-contained true `
-          --output ./artifacts/console `
-          /p:PublishSingleFile=true `
-          /p:PublishTrimmed=true
-
     - name: Publish WinForms Installer
       run: |
         dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csproj `
@@ -505,7 +495,6 @@ jobs:
           ${{ steps.changelog.outputs.changelog }}
           
           ## Downloads
-          - **Console Installer**: ClaudeCodeInstaller.Console.exe
           - **WinForms Installer**: ClaudeCodeInstaller.WinForms.exe
         files: |
           artifacts/**/*.exe
