@@ -1,13 +1,16 @@
 // HealthCheckEndpoint.cs
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Threading.Tasks;
 using System.Text.Json;
 
 namespace ClaudeCodeInstaller.Core
 {
+    [SupportedOSPlatform("windows")]
     public class HealthCheckEndpoint
     {
         private readonly HealthCheckService _healthCheckService;
@@ -68,19 +71,7 @@ namespace ClaudeCodeInstaller.Core
                 {
                     var healthResult = await _healthCheckService.CheckHealthAsync();
                     
-                    var json = JsonSerializer.Serialize(new
-                    {
-                        status = healthResult.IsHealthy ? "healthy" : "unhealthy",
-                        timestamp = healthResult.Timestamp,
-                        checks = new
-                        {
-                            claudeCodeInstalled = healthResult.IsClaudeCodeInstalled,
-                            prerequisites = healthResult.HasPrerequisites,
-                            windows11 = healthResult.IsWindows11,
-                            adminRights = healthResult.HasAdminRights
-                        },
-                        error = healthResult.ErrorMessage
-                    }, new JsonSerializerOptions { WriteIndented = true });
+                    var json = SerializeHealthResult(healthResult);
 
                     var buffer = Encoding.UTF8.GetBytes(json);
                     response.StatusCode = healthResult.IsHealthy ? (int)HttpStatusCode.OK : (int)HttpStatusCode.ServiceUnavailable;
@@ -96,13 +87,37 @@ namespace ClaudeCodeInstaller.Core
             catch (Exception ex)
             {
                 response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                var error = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { error = ex.Message }));
+                var error = Encoding.UTF8.GetBytes(SerializeError(ex.Message));
                 await response.OutputStream.WriteAsync(error, 0, error.Length);
             }
             finally
             {
                 response.Close();
             }
+        }
+
+        [RequiresUnreferencedCode("JSON serialization may require types that cannot be statically analyzed")]
+        private static string SerializeHealthResult(HealthCheckResult healthResult)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                status = healthResult.IsHealthy ? "healthy" : "unhealthy",
+                timestamp = healthResult.Timestamp,
+                checks = new
+                {
+                    claudeCodeInstalled = healthResult.IsClaudeCodeInstalled,
+                    prerequisites = healthResult.HasPrerequisites,
+                    windows11 = healthResult.IsWindows11,
+                    adminRights = healthResult.HasAdminRights
+                },
+                error = healthResult.ErrorMessage
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        [RequiresUnreferencedCode("JSON serialization may require types that cannot be statically analyzed")]
+        private static string SerializeError(string message)
+        {
+            return JsonSerializer.Serialize(new { error = message });
         }
     }
 }

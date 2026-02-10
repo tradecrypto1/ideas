@@ -1,10 +1,12 @@
 // HealthCheckService.cs
 using System;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 
 namespace ClaudeCodeInstaller.Core
 {
+    [SupportedOSPlatform("windows")]
     public class HealthCheckService
     {
         private readonly InstallationService _installationService;
@@ -14,6 +16,7 @@ namespace ClaudeCodeInstaller.Core
             _installationService = installationService;
         }
 
+        [SupportedOSPlatform("windows")]
         public async Task<HealthCheckResult> CheckHealthAsync()
         {
             var result = new HealthCheckResult
@@ -31,12 +34,18 @@ namespace ClaudeCodeInstaller.Core
             result.IsWindows11 = InstallationService.IsWindows11OrLater();
 
             // Check admin privileges
-            result.HasAdminRights = InstallationService.IsAdministrator();
+            result.HasAdminRights = GetAdminRights();
 
             // Overall health
             result.IsHealthy = result.IsClaudeCodeInstalled && result.HasPrerequisites && result.IsWindows11;
 
             return result;
+        }
+
+        [SupportedOSPlatform("windows")]
+        private bool GetAdminRights()
+        {
+            return InstallationService.IsAdministrator();
         }
     }
 

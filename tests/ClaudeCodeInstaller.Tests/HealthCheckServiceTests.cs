@@ -1,4 +1,5 @@
 // HealthCheckServiceTests.cs
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using ClaudeCodeInstaller.Core;
 using FluentAssertions;
@@ -10,6 +11,7 @@ namespace ClaudeCodeInstaller.Tests
     public class HealthCheckServiceTests
     {
         [Fact]
+        [SupportedOSPlatform("windows")]
         public async Task CheckHealthAsync_ShouldReturnHealthCheckResult()
         {
             var installationService = new InstallationService();

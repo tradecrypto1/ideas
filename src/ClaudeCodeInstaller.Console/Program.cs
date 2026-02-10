@@ -1,5 +1,6 @@
 // Program.cs
 using System;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using ClaudeCodeInstaller.Core;
 using SysConsole = System.Console;
@@ -10,6 +11,7 @@ namespace ClaudeCodeInstaller.Console
     {
         private static InstallationService? _installationService;
 
+        [SupportedOSPlatform("windows")]
         static async Task Main(string[] args)
         {
             SysConsole.ForegroundColor = ConsoleColor.Cyan;
@@ -29,7 +31,7 @@ namespace ClaudeCodeInstaller.Console
                 SysConsole.WriteLine();
             }
 
-            if (!InstallationService.IsAdministrator())
+            if (!CheckAdminRights())
             {
                 SysConsole.ForegroundColor = ConsoleColor.Yellow;
                 SysConsole.WriteLine("⚠️  Note: Running without administrator privileges.");
@@ -95,6 +97,12 @@ namespace ClaudeCodeInstaller.Console
 
             SysConsole.WriteLine("\n\nPress any key to exit...");
             SysConsole.ReadKey();
+        }
+
+        [SupportedOSPlatform("windows")]
+        static bool CheckAdminRights()
+        {
+            return InstallationService.IsAdministrator();
         }
 
         static async Task CheckAndInstallPrerequisites()

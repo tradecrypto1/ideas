@@ -1,6 +1,7 @@
 // InstallationServiceTests.cs
 using System;
 using System.Net.Http;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using ClaudeCodeInstaller.Core;
 using FluentAssertions;
@@ -12,6 +13,7 @@ namespace ClaudeCodeInstaller.Tests
     public class InstallationServiceTests
     {
         [Fact]
+        [SupportedOSPlatform("windows")]
         public void IsWindows11OrLater_ShouldReturnTrue_OnWindows11()
         {
             // This test will pass if running on Windows 11+
@@ -21,6 +23,7 @@ namespace ClaudeCodeInstaller.Tests
         }
 
         [Fact]
+        [SupportedOSPlatform("windows")]
         public void IsAdministrator_ShouldNotThrow()
         {
             // Verify the method doesn't throw

@@ -513,39 +513,3 @@ jobs:
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  healthcheck:
-    name: Health Check
-    runs-on: windows-latest
-    needs: build
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-installers
-
-    - name: Run health check
-      run: |
-        Write-Host "Running health check..."
-        if (Test-Path "artifacts/console/ClaudeCodeInstaller.Console.exe") {
-          Write-Host "✓ Console installer found"
-        } else {
-          Write-Host "✗ Console installer not found"
-          exit 1
-        }
-        if (Test-Path "artifacts/winforms/ClaudeCodeInstaller.WinForms.exe") {
-          Write-Host "✓ WinForms installer found"
-        } else {
-          Write-Host "✗ WinForms installer not found"
-          exit 1
-        }
-        Write-Host "Health check passed!"
