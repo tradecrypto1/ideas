@@ -511,7 +511,7 @@ jobs:
 
     - name: Create GitHub Release
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.get_version.outputs.tag }}
         name: Release Candidate ${{ steps.get_version.outputs.tag }}
