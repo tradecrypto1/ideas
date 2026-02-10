@@ -217,7 +217,33 @@ jobs:
         Write-Host $vulnOutput
         
         # Check if any vulnerabilities found
-        if ($vulnOutput -match "vulnerable") {
+        # Look for actual vulnerability entries (not just the word "vulnerable")
+        # Vulnerable packages show up as entries with package names, not just "no vulnerable packages"
+        $hasVulnerabilities = $false
+        
+        # Check each project's output
+        $lines = $vulnerable -split "`n"
+        foreach ($line in $lines) {
+          # Look for lines that indicate actual vulnerabilities (package name followed by version info)
+          # Skip lines that say "no vulnerable packages"
+          if ($line -match "^\s+>\s+\S+\s+\S+\s+\S+\s+\S+") {
+            # This is a vulnerable package entry
+            $hasVulnerabilities = $true
+            Write-Host "Found vulnerable package: $line"
+          }
+        }
+        
+        # Also check if output contains vulnerability indicators (but not "no vulnerable")
+        if (-not $hasVulnerabilities) {
+          # Check for patterns that indicate vulnerabilities exist
+          if ($vulnOutput -match "has the following vulnerable packages" -or 
+              $vulnOutput -match "Transitive Package.*Severity" -or
+              ($vulnOutput -match "vulnerable" -and $vulnOutput -notmatch "no vulnerable")) {
+            $hasVulnerabilities = $true
+          }
+        }
+        
+        if ($hasVulnerabilities) {
           Write-Host "::error::Vulnerable packages detected!"
           exit 1
         } else {
