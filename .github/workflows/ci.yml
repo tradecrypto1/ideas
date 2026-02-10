@@ -9,8 +9,6 @@ on:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
@@ -34,14 +32,33 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
 
+    - name: Publish Console Installer
+      run: |
+        dotnet publish src/ClaudeCodeInstaller.Console/ClaudeCodeInstaller.Console.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained true `
+          --output ./artifacts/console `
+          /p:PublishSingleFile=true `
+          /p:PublishTrimmed=true
+
+    - name: Publish WinForms Installer
+      run: |
+        dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained true `
+          --output ./artifacts/winforms `
+          /p:PublishSingleFile=true `
+          /p:PublishTrimmed=true
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: build-artifacts
+        name: windows-installers
         path: |
-          src/**/bin/Release/**/*.exe
-          src/**/bin/Release/**/*.dll
-        retention-days: 7
+          artifacts/**/*.exe
+        retention-days: 30
 
   test:
     name: Test
@@ -69,51 +86,9 @@ jobs:
         files: '**/coverage.cobertura.xml'
         fail_ci_if_error: false
 
-  docker-build:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    needs: [build, test]
-    if: github.event_name == 'push'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
   version-tag:
-    name: Create RC Version Tag
-    runs-on: ubuntu-latest
+    name: Create RC Version Tag and Release
+    runs-on: windows-latest
     needs: [build, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
@@ -126,22 +101,129 @@ jobs:
     - name: Get version from project
       id: get_version
       run: |
-        VERSION=$(grep -oP '<Version>\K[^<]+' src/ClaudeCodeInstaller.Core/ClaudeCodeInstaller.Core.csproj)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
+        $version = (Select-String -Path "src/ClaudeCodeInstaller.Core/ClaudeCodeInstaller.Core.csproj" -Pattern '<Version>([^<]+)</Version>').Matches.Groups[1].Value
+        $rcTag = "v$version-rc.$(Get-Date -Format 'yyyyMMddHHmmss')"
+        Write-Host "Version: $version"
+        Write-Host "RC Tag: $rcTag"
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "tag=$rcTag" >> $env:GITHUB_OUTPUT
+
+    - name: Get previous tag
+      id: previous_tag
+      run: |
+        $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+        if ($LASTEXITCODE -ne 0) {
+          $previousTag = ""
+        }
+        Write-Host "Previous tag: $previousTag"
+        echo "tag=$previousTag" >> $env:GITHUB_OUTPUT
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        $previousTag = "${{ steps.previous_tag.outputs.tag }}"
+        $currentTag = "${{ steps.get_version.outputs.tag }}"
+        
+        if ($previousTag -eq "") {
+          Write-Host "No previous tag found, getting all commits"
+          $commits = git log --pretty=format:"%s" HEAD
+        } else {
+          Write-Host "Getting commits since $previousTag"
+          $commits = git log --pretty=format:"%s" ${previousTag}..HEAD
+        }
+        
+        $changelog = "## Changelog`n`n"
+        
+        # Categorize commits by type
+        $features = @()
+        $fixes = @()
+        $docs = @()
+        $refactor = @()
+        $other = @()
+        
+        foreach ($commit in $commits) {
+          if ($commit -match '^feat(\(.+\))?: (.+)') {
+            $features += "- $($matches[2])"
+          } elseif ($commit -match '^fix(\(.+\))?: (.+)') {
+            $fixes += "- $($matches[2])"
+          } elseif ($commit -match '^docs(\(.+\))?: (.+)') {
+            $docs += "- $($matches[2])"
+          } elseif ($commit -match '^refactor(\(.+\))?: (.+)') {
+            $refactor += "- $($matches[2])"
+          } elseif ($commit -notmatch '^(chore|ci|build|test|style)') {
+            $other += "- $commit"
+          }
+        }
+        
+        if ($features.Count -gt 0) {
+          $changelog += "### ✨ Features`n"
+          $changelog += ($features -join "`n") + "`n`n"
+        }
+        
+        if ($fixes.Count -gt 0) {
+          $changelog += "### 🐛 Bug Fixes`n"
+          $changelog += ($fixes -join "`n") + "`n`n"
+        }
+        
+        if ($refactor.Count -gt 0) {
+          $changelog += "### ♻️ Refactoring`n"
+          $changelog += ($refactor -join "`n") + "`n`n"
+        }
+        
+        if ($docs.Count -gt 0) {
+          $changelog += "### 📝 Documentation`n"
+          $changelog += ($docs -join "`n") + "`n`n"
+        }
+        
+        if ($other.Count -gt 0) {
+          $changelog += "### 📦 Other Changes`n"
+          $changelog += ($other -join "`n") + "`n`n"
+        }
+        
+        if ($features.Count -eq 0 -and $fixes.Count -eq 0 -and $docs.Count -eq 0 -and $refactor.Count -eq 0 -and $other.Count -eq 0) {
+          $changelog += "No significant changes since last release.`n`n"
+        }
+        
+        $changelog += "---`n"
+        $changelog += "**Full Changelog**: $previousTag...$currentTag"
+        
+        Write-Host "Generated changelog:"
+        Write-Host $changelog
+        echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+        echo $changelog >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
 
     - name: Create RC tag
-      id: create_tag
       run: |
-        VERSION="${{ steps.get_version.outputs.version }}"
-        RC_TAG="v${VERSION}-rc.$(date +%Y%m%d%H%M%S)"
-        echo "tag=$RC_TAG" >> $GITHUB_OUTPUT
+        $tag = "${{ steps.get_version.outputs.tag }}"
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git tag -a "$RC_TAG" -m "Release Candidate: $RC_TAG"
-        git push origin "$RC_TAG"
-        echo "Created tag: $RC_TAG"
-        echo "RC Tag: $RC_TAG"
+        git tag -a "$tag" -m "Release Candidate: $tag"
+        git push origin "$tag"
+        Write-Host "Created tag: $tag"
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-installers
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_version.outputs.tag }}
+        name: Release Candidate ${{ steps.get_version.outputs.tag }}
+        body: |
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Downloads
+          - **Console Installer**: ClaudeCodeInstaller.Console.exe
+          - **WinForms Installer**: ClaudeCodeInstaller.WinForms.exe
+        files: |
+          artifacts/**/*.exe
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   healthcheck:
     name: Health Check
@@ -160,10 +242,21 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
-        name: build-artifacts
+        name: windows-installers
 
     - name: Run health check
       run: |
-        # Run health check on built application
         Write-Host "Running health check..."
-        # Add health check logic here
+        if (Test-Path "artifacts/console/ClaudeCodeInstaller.Console.exe") {
+          Write-Host "✓ Console installer found"
+        } else {
+          Write-Host "✗ Console installer not found"
+          exit 1
+        }
+        if (Test-Path "artifacts/winforms/ClaudeCodeInstaller.WinForms.exe") {
+          Write-Host "✓ WinForms installer found"
+        } else {
+          Write-Host "✗ WinForms installer not found"
+          exit 1
+        }
+        Write-Host "Health check passed!"
