@@ -59,6 +59,16 @@ jobs:
     # ============================================
     # Code Security Scans (Fail Fast)
     # ============================================
+    - name: Cache CodeQL databases
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.tool_cache }}/codeql
+          ~/.codeql
+        key: ${{ runner.os }}-codeql-${{ hashFiles('**/*.cs', '**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-codeql-
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
       with:
