@@ -69,17 +69,30 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-codeql-
 
+    - name: Cache OWASP Dependency Check database
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.dependency-check/data
+          ${{ runner.tool_cache }}/dependency-check
+        key: ${{ runner.os }}-owasp-db
+        restore-keys: |
+          ${{ runner.os }}-owasp-db-
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
       with:
         languages: csharp
-        queries: security-and-quality
 
     - name: Autobuild for CodeQL
       uses: github/codeql-action/autobuild@v4
+      env:
+        CODEQL_ACTION_CACHE_DOWNLOADED_DATABASES: true
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
+      env:
+        CODEQL_ACTION_CACHE_DOWNLOADED_DATABASES: true
 
     - name: Upload SARIF
       uses: github/codeql-action/upload-sarif@v4
@@ -284,6 +297,16 @@ jobs:
     # ============================================
     # Tests
     # ============================================
+    - name: Cache test results
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/TestResults
+          **/coverage*.xml
+        key: ${{ runner.os }}-test-results-${{ hashFiles('tests/**/*.cs') }}
+        restore-keys: |
+          ${{ runner.os }}-test-results-
+
     - name: Run tests
       run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
 
@@ -296,11 +319,29 @@ jobs:
     # ============================================
     # Virus Scan
     # ============================================
+    - name: Cache Windows Defender definitions
+      uses: actions/cache@v4
+      with:
+        path: |
+          C:\ProgramData\Microsoft\Windows Defender\Definition Updates
+        key: ${{ runner.os }}-defender-defs
+        restore-keys: |
+          ${{ runner.os }}-defender-defs-
+
     - name: Update Windows Defender definitions
       run: |
         Write-Host "Updating Windows Defender definitions..."
-        Update-MpSignature
-        Write-Host "✓ Definitions updated"
+        # Only update if definitions are older than 24 hours
+        $lastUpdate = (Get-Item "C:\ProgramData\Microsoft\Windows Defender\Definition Updates\*" -ErrorAction SilentlyContinue | 
+          Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
+        $hoursSinceUpdate = ((Get-Date) - $lastUpdate).TotalHours
+        
+        if ($hoursSinceUpdate -gt 24 -or -not $lastUpdate) {
+          Update-MpSignature
+          Write-Host "✓ Definitions updated"
+        } else {
+          Write-Host "✓ Using cached definitions (updated $([math]::Round($hoursSinceUpdate, 1)) hours ago)"
+        }
 
     - name: Scan executables with Windows Defender
       run: |
