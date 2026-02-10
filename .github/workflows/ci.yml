@@ -59,16 +59,6 @@ jobs:
     # ============================================
     # Code Security Scans (Fail Fast)
     # ============================================
-    - name: Cache CodeQL databases
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ runner.tool_cache }}/codeql
-          ~/.codeql
-        key: ${{ runner.os }}-codeql-${{ hashFiles('**/*.cs', '**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-codeql-
-
     - name: Cache OWASP Dependency Check database
       uses: actions/cache@v4
       with:
@@ -79,23 +69,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-owasp-db-
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4
-      with:
-        languages: csharp
-
-    - name: Autobuild for CodeQL
-      uses: github/codeql-action/autobuild@v4
-      env:
-        CODEQL_ACTION_CACHE_DOWNLOADED_DATABASES: true
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
-      env:
-        CODEQL_ACTION_CACHE_DOWNLOADED_DATABASES: true
-
-    - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v4
+    # Note: CodeQL is handled by GitHub's default Code Scanning setup
+    # Running it in workflow conflicts with default setup, so we skip it here
+    # CodeQL will run automatically via GitHub's Code Scanning feature
 
     - name: Build with security analyzers
       run: |
