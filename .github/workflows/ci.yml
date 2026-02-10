@@ -59,6 +59,273 @@ jobs:
           artifacts/**/*.exe
         retention-days: 30
 
+  vulnerability-scan:
+    name: Vulnerability Scan
+    runs-on: windows-latest
+    needs: build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.nuget/packages
+          **/packages.lock.json
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Check for outdated packages
+      id: outdated_check
+      run: |
+        Write-Host "Checking for outdated NuGet packages..."
+        Write-Host "=========================================="
+        
+        $outdated = dotnet list package --outdated --include-transitive
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Error checking for outdated packages"
+          exit 1
+        }
+        
+        $outdatedOutput = $outdated | Out-String
+        Write-Host $outdatedOutput
+        
+        # Parse outdated packages
+        $outdatedPackages = @()
+        $lines = $outdated -split "`n"
+        $inPackageSection = $false
+        
+        foreach ($line in $lines) {
+          if ($line -match "Top-level Package") {
+            $inPackageSection = $true
+            continue
+          }
+          if ($line -match "Transitive Package") {
+            $inPackageSection = $true
+            continue
+          }
+          if ($inPackageSection -and $line -match "> (.+?)\s+(\S+)\s+(\S+)") {
+            $packageName = $matches[1].Trim()
+            $currentVersion = $matches[2].Trim()
+            $latestVersion = $matches[3].Trim()
+            $outdatedPackages += [PSCustomObject]@{
+              Package = $packageName
+              Current = $currentVersion
+              Latest = $latestVersion
+            }
+          }
+        }
+        
+        if ($outdatedPackages.Count -gt 0) {
+          Write-Host "`n::warning::Found $($outdatedPackages.Count) outdated package(s):"
+          Write-Host "`n| Package | Current Version | Latest Version |"
+          Write-Host "|---------|----------------|----------------|"
+          foreach ($pkg in $outdatedPackages) {
+            Write-Host "| $($pkg.Package) | $($pkg.Current) | $($pkg.Latest) |"
+          }
+          
+          # Check for major version updates (security concern)
+          $majorUpdates = $outdatedPackages | Where-Object {
+            $currentMajor = ($_.Current -split '\.')[0]
+            $latestMajor = ($_.Latest -split '\.')[0]
+            $currentMajor -ne $latestMajor
+          }
+          
+          if ($majorUpdates.Count -gt 0) {
+            Write-Host "`n::error::Found $($majorUpdates.Count) package(s) with major version updates available:"
+            foreach ($pkg in $majorUpdates) {
+              Write-Host "  - $($pkg.Package): $($pkg.Current) -> $($pkg.Latest)"
+            }
+            echo "has_major_updates=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
+          }
+          
+          echo "has_outdated=true" >> $env:GITHUB_OUTPUT
+          echo "outdated_count=$($outdatedPackages.Count)" >> $env:GITHUB_OUTPUT
+        } else {
+          Write-Host "✓ All packages are up-to-date"
+          echo "has_outdated=false" >> $env:GITHUB_OUTPUT
+          echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
+          echo "outdated_count=0" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Check for vulnerable packages
+      id: vuln_check
+      run: |
+        Write-Host "Scanning for vulnerable NuGet packages..."
+        Write-Host "=========================================="
+        $vulnerable = dotnet list package --vulnerable --include-transitive
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Error checking vulnerabilities"
+          exit 1
+        }
+        
+        $vulnOutput = $vulnerable | Out-String
+        Write-Host $vulnOutput
+        
+        # Check if any vulnerabilities found
+        if ($vulnOutput -match "vulnerable") {
+          Write-Host "::error::Vulnerable packages detected!"
+          echo "has_vulnerabilities=true" >> $env:GITHUB_OUTPUT
+          exit 1
+        } else {
+          Write-Host "✓ No vulnerable packages found"
+          echo "has_vulnerabilities=false" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Run OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'ClaudeCodeInstaller'
+        path: '.'
+        format: 'HTML'
+        args: >
+          --enableRetired
+          --enableExperimental
+          --failOnCVSS 7
+      continue-on-error: true
+
+    - name: Upload vulnerability report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: vulnerability-report
+        path: reports/*.html
+        retention-days: 7
+
+    - name: Dependency scan summary
+      if: always()
+      run: |
+        Write-Host "`n=========================================="
+        Write-Host "Dependency Scan Summary"
+        Write-Host "=========================================="
+        
+        $hasOutdated = "${{ steps.outdated_check.outputs.has_outdated }}" -eq "true"
+        $hasMajorUpdates = "${{ steps.outdated_check.outputs.has_major_updates }}" -eq "true"
+        $hasVulnerabilities = "${{ steps.vuln_check.outputs.has_vulnerabilities }}" -eq "true"
+        $outdatedCount = "${{ steps.outdated_check.outputs.outdated_count }}"
+        
+        if ($hasOutdated) {
+          Write-Host "⚠ Outdated packages: $outdatedCount"
+        } else {
+          Write-Host "✓ All packages are up-to-date"
+        }
+        
+        if ($hasMajorUpdates) {
+          Write-Host "⚠ Major version updates available"
+        }
+        
+        if ($hasVulnerabilities) {
+          Write-Host "❌ Vulnerable packages detected"
+        } else {
+          Write-Host "✓ No vulnerable packages"
+        }
+        
+        Write-Host "=========================================="
+
+    - name: Fail on major version updates
+      if: steps.outdated_check.outputs.has_major_updates == 'true'
+      run: |
+        Write-Host "::error::Major version updates detected. Please review and update packages."
+        Write-Host "Major version updates may include security fixes and breaking changes."
+        Write-Host "Run 'dotnet list package --outdated' locally to see details."
+        exit 1
+
+  virus-scan:
+    name: Virus Scan
+    runs-on: windows-latest
+    needs: build
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-installers
+
+    - name: Update Windows Defender definitions
+      run: |
+        Write-Host "Updating Windows Defender definitions..."
+        Update-MpSignature
+        Write-Host "✓ Definitions updated"
+
+    - name: Scan executables with Windows Defender
+      run: |
+        Write-Host "Scanning executables for viruses and malware..."
+        
+        # Check if Windows Defender is available
+        if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
+          Write-Host "::warning::Windows Defender not available, skipping virus scan"
+          Write-Host "This is expected on some GitHub Actions runners"
+          exit 0
+        }
+        
+        $exeFiles = Get-ChildItem -Recurse -Filter *.exe artifacts
+        
+        if ($exeFiles.Count -eq 0) {
+          Write-Host "::error::No executables found to scan"
+          exit 1
+        }
+        
+        Write-Host "Found $($exeFiles.Count) executable(s) to scan"
+        
+        $scanResults = @()
+        $hasThreats = $false
+        
+        foreach ($file in $exeFiles) {
+          Write-Host "Scanning: $($file.Name) ($([math]::Round($file.Length/1MB, 2)) MB)"
+          
+          try {
+            # Perform quick scan on the file
+            $scanResult = Start-MpScan -ScanType QuickScan -ScanPath $file.FullName -ErrorAction Stop
+            
+            # Wait a moment for scan to complete
+            Start-Sleep -Seconds 2
+            
+            # Check for threats detected
+            $threats = Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object { 
+              $_.Resources -like "*$($file.Name)*" 
+            }
+            
+            if ($threats) {
+              Write-Host "::error::Threat detected in $($file.Name)"
+              $threats | ForEach-Object {
+                Write-Host "  Threat: $($_.ThreatName)"
+                Write-Host "  Severity: $($_.InitialSeverity)"
+              }
+              $hasThreats = $true
+              $scanResults += "❌ $($file.Name): Threats detected"
+            } else {
+              Write-Host "✓ $($file.Name): Clean"
+              $scanResults += "✓ $($file.Name): Clean"
+            }
+          } catch {
+            Write-Host "::warning::Could not scan $($file.Name): $($_.Exception.Message)"
+            $scanResults += "⚠ $($file.Name): Scan skipped"
+          }
+        }
+        
+        Write-Host "`n=== Scan Summary ==="
+        $scanResults | ForEach-Object { Write-Host $_ }
+        
+        if ($hasThreats) {
+          Write-Host "::error::Virus scan failed - threats detected!"
+          exit 1
+        } else {
+          Write-Host "✓ All files passed virus scan"
+        }
+
   test:
     name: Test
     runs-on: windows-latest
@@ -73,8 +340,31 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.nuget/packages
+          **/packages.lock.json
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Cache build outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/bin
+          **/obj
+        key: ${{ runner.os }}-build-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+
     - name: Restore dependencies
       run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --configuration Release --no-restore
 
     - name: Run tests
       run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
@@ -88,7 +378,7 @@ jobs:
   version-tag:
     name: Create RC Version Tag and Release
     runs-on: windows-latest
-    needs: [build, test]
+    needs: [build, test, vulnerability-scan, virus-scan]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
