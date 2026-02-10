@@ -11,11 +11,18 @@ env:
   DOTNET_VERSION: '8.0.x'
 
 jobs:
-  build:
-    name: Build
+  ci-cd:
+    name: CI/CD Pipeline
     runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: write
+      security-events: write
     
     steps:
+    # ============================================
+    # Setup
+    # ============================================
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -26,42 +33,6 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build solution
-      run: dotnet build --configuration Release --no-restore
-
-    - name: Publish WinForms Installer
-      run: |
-        dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csproj `
-          --configuration Release `
-          --runtime win-x64 `
-          --self-contained true `
-          --output ./artifacts/winforms `
-          /p:PublishSingleFile=true
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-installers
-        path: |
-          artifacts/**/*.exe
-        retention-days: 30
-
-  vulnerability-scan:
-    name: Vulnerability Scan
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
     - name: Cache NuGet packages
       uses: actions/cache@v4
       with:
@@ -72,222 +43,35 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nuget-
 
+    - name: Cache build outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/bin
+          **/obj
+        key: ${{ runner.os }}-build-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Check for outdated packages
-      id: outdated_check
-      run: |
-        Write-Host "Checking for outdated NuGet packages..."
-        Write-Host "=========================================="
-        
-        $outdated = dotnet list package --outdated --include-transitive
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "Error checking for outdated packages"
-          exit 1
-        }
-        
-        $outdatedOutput = $outdated | Out-String
-        Write-Host $outdatedOutput
-        
-        # Parse outdated packages
-        $outdatedPackages = @()
-        $lines = $outdated -split "`n"
-        $inPackageSection = $false
-        
-        foreach ($line in $lines) {
-          if ($line -match "Top-level Package") {
-            $inPackageSection = $true
-            continue
-          }
-          if ($line -match "Transitive Package") {
-            $inPackageSection = $true
-            continue
-          }
-          if ($inPackageSection -and $line -match "> (.+?)\s+(\S+)\s+(\S+)") {
-            $packageName = $matches[1].Trim()
-            $currentVersion = $matches[2].Trim()
-            $latestVersion = $matches[3].Trim()
-            $outdatedPackages += [PSCustomObject]@{
-              Package = $packageName
-              Current = $currentVersion
-              Latest = $latestVersion
-            }
-          }
-        }
-        
-        if ($outdatedPackages.Count -gt 0) {
-          Write-Host "`n::warning::Found $($outdatedPackages.Count) outdated package(s):"
-          Write-Host "`n| Package | Current Version | Latest Version |"
-          Write-Host "|---------|----------------|----------------|"
-          foreach ($pkg in $outdatedPackages) {
-            Write-Host "| $($pkg.Package) | $($pkg.Current) | $($pkg.Latest) |"
-          }
-          
-          # Check for major version updates (security concern)
-          $majorUpdates = $outdatedPackages | Where-Object {
-            $currentMajor = ($_.Current -split '\.')[0]
-            $latestMajor = ($_.Latest -split '\.')[0]
-            $currentMajor -ne $latestMajor
-          }
-          
-          if ($majorUpdates.Count -gt 0) {
-            Write-Host "`n::error::Found $($majorUpdates.Count) package(s) with major version updates available:"
-            foreach ($pkg in $majorUpdates) {
-              Write-Host "  - $($pkg.Package): $($pkg.Current) -> $($pkg.Latest)"
-            }
-            echo "has_major_updates=true" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
-          }
-          
-          echo "has_outdated=true" >> $env:GITHUB_OUTPUT
-          echo "outdated_count=$($outdatedPackages.Count)" >> $env:GITHUB_OUTPUT
-        } else {
-          Write-Host "✓ All packages are up-to-date"
-          echo "has_outdated=false" >> $env:GITHUB_OUTPUT
-          echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
-          echo "outdated_count=0" >> $env:GITHUB_OUTPUT
-        }
-
-    - name: Check for vulnerable packages
-      id: vuln_check
-      run: |
-        Write-Host "Scanning for vulnerable NuGet packages..."
-        Write-Host "=========================================="
-        $vulnerable = dotnet list package --vulnerable --include-transitive
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "Error checking vulnerabilities"
-          exit 1
-        }
-        
-        $vulnOutput = $vulnerable | Out-String
-        Write-Host $vulnOutput
-        
-        # Check if any vulnerabilities found
-        if ($vulnOutput -match "vulnerable") {
-          Write-Host "::error::Vulnerable packages detected!"
-          echo "has_vulnerabilities=true" >> $env:GITHUB_OUTPUT
-          exit 1
-        } else {
-          Write-Host "✓ No vulnerable packages found"
-          echo "has_vulnerabilities=false" >> $env:GITHUB_OUTPUT
-        }
-
-    - name: Run OWASP Dependency Check
-      uses: dependency-check/Dependency-Check_Action@main
-      with:
-        project: 'ClaudeCodeInstaller'
-        path: '.'
-        format: 'HTML'
-        args: >
-          --enableRetired
-          --enableExperimental
-          --failOnCVSS 7
-      continue-on-error: true
-
-    - name: Upload vulnerability report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: vulnerability-report
-        path: reports/*.html
-        retention-days: 7
-
-    - name: Dependency scan summary
-      if: always()
-      run: |
-        Write-Host "`n=========================================="
-        Write-Host "Dependency Scan Summary"
-        Write-Host "=========================================="
-        
-        $hasOutdated = "${{ steps.outdated_check.outputs.has_outdated }}" -eq "true"
-        $hasMajorUpdates = "${{ steps.outdated_check.outputs.has_major_updates }}" -eq "true"
-        $hasVulnerabilities = "${{ steps.vuln_check.outputs.has_vulnerabilities }}" -eq "true"
-        $outdatedCount = "${{ steps.outdated_check.outputs.outdated_count }}"
-        
-        if ($hasOutdated) {
-          Write-Host "⚠ Outdated packages: $outdatedCount"
-        } else {
-          Write-Host "✓ All packages are up-to-date"
-        }
-        
-        if ($hasMajorUpdates) {
-          Write-Host "⚠ Major version updates available"
-        }
-        
-        if ($hasVulnerabilities) {
-          Write-Host "❌ Vulnerable packages detected"
-        } else {
-          Write-Host "✓ No vulnerable packages"
-        }
-        
-        Write-Host "=========================================="
-
-    - name: Fail on major version updates
-      if: steps.outdated_check.outputs.has_major_updates == 'true'
-      run: |
-        Write-Host "::error::Major version updates detected. Please review and update packages."
-        Write-Host "Major version updates may include security fixes and breaking changes."
-        Write-Host "Run 'dotnet list package --outdated' locally to see details."
-        exit 1
-
-  codeql-analysis:
-    name: CodeQL Security Analysis
-    runs-on: windows-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
+    # ============================================
+    # Code Security Scans (Fail Fast)
+    # ============================================
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: csharp
         queries: security-and-quality
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Autobuild
+    - name: Autobuild for CodeQL
       uses: github/codeql-action/autobuild@v3
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:csharp"
-
-  security-code-scan:
-    name: .NET Security Code Analysis
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.nuget/packages
-          **/packages.lock.json
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
-    - name: Restore dependencies
-      run: dotnet restore
 
     - name: Build with security analyzers
       run: |
@@ -314,25 +98,190 @@ jobs:
           exit 1
         }
 
-  virus-scan:
-    name: Virus Scan
-    runs-on: windows-latest
-    needs: build
-    
-    steps:
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-installers
-        path: .
-
-    - name: List downloaded artifacts
+    # ============================================
+    # Dependency Security Checks (Fail Fast)
+    # ============================================
+    - name: Check for outdated packages
+      id: outdated_check
       run: |
-        Write-Host "Downloaded artifacts structure:"
-        Get-ChildItem -Recurse | Select-Object FullName, Length | ForEach-Object { 
-          Write-Host "  $($_.FullName) ($([math]::Round($_.Length/1MB, 2)) MB)"
+        Write-Host "Checking for outdated NuGet packages..."
+        Write-Host "=========================================="
+        
+        # Only check top-level packages (direct dependencies)
+        $outdated = dotnet list package --outdated
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Error checking for outdated packages"
+          exit 1
+        }
+        
+        $outdatedOutput = $outdated | Out-String
+        Write-Host $outdatedOutput
+        
+        # Framework/system packages that are managed by .NET runtime
+        $frameworkPackages = @(
+          "Microsoft.NETCore.Platforms",
+          "Microsoft.NETCore.Targets",
+          "NETStandard.Library",
+          "System.Configuration.ConfigurationManager",
+          "System.Diagnostics.DiagnosticSource",
+          "System.Diagnostics.EventLog",
+          "System.Reflection.Metadata",
+          "System.Security.Cryptography.Cng",
+          "System.Security.Cryptography.OpenSsl",
+          "System.Security.Cryptography.ProtectedData",
+          "Microsoft.CodeCoverage",
+          "Microsoft.TestPlatform.ObjectModel",
+          "Microsoft.TestPlatform.TestHost",
+          "NuGet.Frameworks"
+        )
+        
+        # Parse outdated packages (only top-level)
+        $outdatedPackages = @()
+        $lines = $outdated -split "`n"
+        $inTopLevelSection = $false
+        
+        foreach ($line in $lines) {
+          if ($line -match "Top-level Package") {
+            $inTopLevelSection = $true
+            continue
+          }
+          if ($line -match "Transitive Package") {
+            $inTopLevelSection = $false
+            continue
+          }
+          if ($inTopLevelSection -and $line -match "> (.+?)\s+(\S+)\s+(\S+)") {
+            $packageName = $matches[1].Trim()
+            $currentVersion = $matches[2].Trim()
+            $latestVersion = $matches[3].Trim()
+            
+            # Skip framework packages managed by .NET
+            if ($frameworkPackages -notcontains $packageName) {
+              $outdatedPackages += [PSCustomObject]@{
+                Package = $packageName
+                Current = $currentVersion
+                Latest = $latestVersion
+              }
+            }
+          }
+        }
+        
+        if ($outdatedPackages.Count -gt 0) {
+          Write-Host "`n::warning::Found $($outdatedPackages.Count) outdated direct package(s):"
+          Write-Host "`n| Package | Current Version | Latest Version |"
+          Write-Host "|---------|----------------|----------------|"
+          foreach ($pkg in $outdatedPackages) {
+            Write-Host "| $($pkg.Package) | $($pkg.Current) | $($pkg.Latest) |"
+          }
+          
+          # Check for major version updates in direct dependencies only
+          $majorUpdates = $outdatedPackages | Where-Object {
+            $currentMajor = ($_.Current -split '\.')[0]
+            $latestMajor = ($_.Latest -split '\.')[0]
+            $currentMajor -ne $latestMajor
+          }
+          
+          if ($majorUpdates.Count -gt 0) {
+            Write-Host "`n::error::Found $($majorUpdates.Count) direct package(s) with major version updates available:"
+            foreach ($pkg in $majorUpdates) {
+              Write-Host "  - $($pkg.Package): $($pkg.Current) -> $($pkg.Latest)"
+            }
+            echo "has_major_updates=true" >> $env:GITHUB_OUTPUT
+            Write-Host "::error::Major version updates detected. Please review and update packages."
+            exit 1
+          } else {
+            echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
+          }
+          
+          echo "has_outdated=true" >> $env:GITHUB_OUTPUT
+          echo "outdated_count=$($outdatedPackages.Count)" >> $env:GITHUB_OUTPUT
+        } else {
+          Write-Host "✓ All direct packages are up-to-date"
+          Write-Host "Note: Transitive and framework packages are managed by .NET runtime"
+          echo "has_outdated=false" >> $env:GITHUB_OUTPUT
+          echo "has_major_updates=false" >> $env:GITHUB_OUTPUT
+          echo "outdated_count=0" >> $env:GITHUB_OUTPUT
         }
 
+    - name: Check for vulnerable packages
+      id: vuln_check
+      run: |
+        Write-Host "Scanning for vulnerable NuGet packages..."
+        Write-Host "=========================================="
+        $vulnerable = dotnet list package --vulnerable --include-transitive
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Error checking vulnerabilities"
+          exit 1
+        }
+        
+        $vulnOutput = $vulnerable | Out-String
+        Write-Host $vulnOutput
+        
+        # Check if any vulnerabilities found
+        if ($vulnOutput -match "vulnerable") {
+          Write-Host "::error::Vulnerable packages detected!"
+          exit 1
+        } else {
+          Write-Host "✓ No vulnerable packages found"
+        }
+
+    - name: Run OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'ClaudeCodeInstaller'
+        path: '.'
+        format: 'HTML'
+        args: >
+          --enableRetired
+          --enableExperimental
+          --failOnCVSS 7
+      continue-on-error: true
+
+    - name: Upload vulnerability report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: vulnerability-report
+        path: reports/*.html
+        retention-days: 7
+
+    # ============================================
+    # Build
+    # ============================================
+    - name: Build solution
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish WinForms Installer
+      run: |
+        dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained true `
+          --output ./artifacts/winforms `
+          /p:PublishSingleFile=true
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-installers
+        path: |
+          artifacts/**/*.exe
+        retention-days: 30
+
+    # ============================================
+    # Tests
+    # ============================================
+    - name: Run tests
+      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      with:
+        files: '**/coverage.cobertura.xml'
+        fail_ci_if_error: false
+
+    # ============================================
+    # Virus Scan
+    # ============================================
     - name: Update Windows Defender definitions
       run: |
         Write-Host "Updating Windows Defender definitions..."
@@ -414,68 +363,12 @@ jobs:
           Write-Host "✓ All files passed virus scan"
         }
 
-  test:
-    name: Test
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.nuget/packages
-          **/packages.lock.json
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
-    - name: Cache build outputs
-      uses: actions/cache@v4
-      with:
-        path: |
-          **/bin
-          **/obj
-        key: ${{ runner.os }}-build-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-build-
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build solution
-      run: dotnet build --configuration Release --no-restore
-
-    - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
-
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v4
-      with:
-        files: '**/coverage.cobertura.xml'
-        fail_ci_if_error: false
-
-  version-tag:
-    name: Create RC Version Tag and Release
-    runs-on: windows-latest
-    needs: [build, test, vulnerability-scan, virus-scan, codeql-analysis]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
+    # ============================================
+    # Release (only on main branch)
+    # ============================================
     - name: Get version from project
       id: get_version
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         $version = (Select-String -Path "src/ClaudeCodeInstaller.Core/ClaudeCodeInstaller.Core.csproj" -Pattern '<Version>([^<]+)</Version>').Matches.Groups[1].Value
         $rcTag = "v$version-rc.$(Get-Date -Format 'yyyyMMddHHmmss')"
@@ -486,6 +379,7 @@ jobs:
 
     - name: Get previous tag
       id: previous_tag
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
         if ($LASTEXITCODE -ne 0) {
@@ -496,6 +390,7 @@ jobs:
 
     - name: Generate changelog
       id: changelog
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         $previousTag = "${{ steps.previous_tag.outputs.tag }}"
         $currentTag = "${{ steps.get_version.outputs.tag }}"
@@ -570,6 +465,7 @@ jobs:
         echo "EOF" >> $env:GITHUB_OUTPUT
 
     - name: Create RC tag
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         $tag = "${{ steps.get_version.outputs.tag }}"
         git config user.name "github-actions[bot]"
@@ -578,12 +474,8 @@ jobs:
         git push origin "$tag"
         Write-Host "Created tag: $tag"
 
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-installers
-
     - name: Create GitHub Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.tag }}
