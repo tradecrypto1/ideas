@@ -28,7 +28,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ClaudeCodeInstaller.Core\ClaudeCodeInstaller.Core.csproj" />
-    <ProjectReference Include="..\..\src\ClaudeCodeInstaller.Console\ClaudeCodeInstaller.Console.csproj" />
   </ItemGroup>
 
 </Project>

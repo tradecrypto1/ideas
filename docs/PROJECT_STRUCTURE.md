@@ -1,7 +1,7 @@
 # Project Structure
 
 ## Overview
-This project provides both console and WinForms applications for installing and running Claude Code on Windows 11.
+This project provides a WinForms application for installing and running Claude Code on Windows 11.
 
 ## Directory Structure
 
@@ -20,7 +20,6 @@ ideas/
 │   ├── HealthCheckService.md           # Health check documentation
 │   ├── HealthCheckEndpoint.md          # HTTP endpoint documentation
 │   ├── VersionInfo.md                  # Version info documentation
-│   ├── Program-Console.md              # Console app documentation
 │   ├── MainForm.md                     # WinForms app documentation
 │   ├── Program-WinForms.md             # WinForms entry point documentation
 │   └── PROJECT_STRUCTURE.md            # This file
@@ -30,8 +29,6 @@ ideas/
 │   │   ├── HealthCheckService.cs       # Health checking
 │   │   ├── HealthCheckEndpoint.cs      # HTTP health endpoint
 │   │   └── VersionInfo.cs              # Version information
-│   ├── ClaudeCodeInstaller.Console/    # Console application
-│   │   └── Program.cs                   # Console entry point
 │   └── ClaudeCodeInstaller.WinForms/   # WinForms application
 │       ├── Program.cs                   # WinForms entry point
 │       └── MainForm.cs                  # Main UI form
@@ -59,13 +56,6 @@ Shared library containing:
 - Version management
 - HTTP health endpoint
 
-### ClaudeCodeInstaller.Console
-Console-based installer with:
-- Step-by-step installation
-- Progress reporting
-- Interactive prompts
-- Post-installation runner option
-
 ### ClaudeCodeInstaller.WinForms
 Windows Forms application with:
 - Graphical UI
@@ -83,9 +73,6 @@ Unit tests using:
 - FluentAssertions
 
 ## Build Outputs
-
-### Console Application
-- `src/ClaudeCodeInstaller.Console/bin/Release/net8.0/win-x64/ClaudeCodeInstaller.Console.exe`
 
 ### WinForms Application
 - `src/ClaudeCodeInstaller.WinForms/bin/Release/net8.0-windows/win-x64/ClaudeCodeInstaller.WinForms.exe`
@@ -107,7 +94,6 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) includes:
 - ✅ Conventional commits
 - ✅ CI/CD pipeline
 - ✅ Health check endpoint
-- ✅ Console installer
 - ✅ WinForms installer with GUI
 - ✅ Version checking and auto-update
 - ✅ Runner functionality

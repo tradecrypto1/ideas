@@ -62,7 +62,7 @@ Double-click the executable or run from command line:
 ```
 
 ## Notes
-- Provides user-friendly GUI alternative to console installer
+- Provides user-friendly GUI for installing and running Claude Code
 - Can run Claude Code without opening terminal
 - Shows detailed logs for troubleshooting
 - Automatically checks for updates

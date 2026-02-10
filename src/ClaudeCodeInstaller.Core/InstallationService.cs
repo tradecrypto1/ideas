@@ -52,14 +52,17 @@ namespace ClaudeCodeInstaller.Core
         public async Task InstallClaudeCodeAsync(string installerPath)
         {
             // Install Claude Code via npm
+            // Always use cmd.exe to run npm since npm on Windows is a .cmd file
+            // cmd.exe properly handles .cmd/.bat files and PATH resolution
             var startInfo = new ProcessStartInfo
             {
-                FileName = "npm",
-                Arguments = "install -g @anthropic-ai/claude-code",
+                FileName = "cmd.exe",
+                Arguments = "/c npm install -g @anthropic-ai/claude-code",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             };
 
             using (var process = Process.Start(startInfo))
@@ -88,17 +91,63 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task<bool> VerifyInstallationAsync()
         {
-            for (int i = 0; i < 3; i++)
+            // Try multiple verification methods
+            for (int i = 0; i < 5; i++)
             {
+                // Method 1: Check if claude-code command is available
                 if (await CheckCommandAsync("claude-code --version"))
                 {
                     return true;
                 }
 
-                if (i < 2)
+                // Method 2: Check npm global list for @anthropic-ai/claude-code
+                if (await CheckNpmGlobalPackageAsync())
+                {
+                    return true;
+                }
+
+                if (i < 4)
                 {
                     await Task.Delay(2000);
                 }
+            }
+
+            return false;
+        }
+
+        private async Task<bool> CheckNpmGlobalPackageAsync()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c npm list -g @anthropic-ai/claude-code --depth=0",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process != null)
+                    {
+                        var output = await process.StandardOutput.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+                        
+                        // Check if package is listed (npm list returns 0 if found)
+                        if (process.ExitCode == 0 && output.Contains("@anthropic-ai/claude-code"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors
             }
 
             return false;
@@ -115,7 +164,8 @@ namespace ClaudeCodeInstaller.Core
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
                 };
 
                 using (var process = Process.Start(startInfo))
@@ -133,6 +183,48 @@ namespace ClaudeCodeInstaller.Core
             }
 
             return false;
+        }
+
+        private async Task<string?> FindNpmPathAsync()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c where npm",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process != null)
+                    {
+                        var output = await process.StandardOutput.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+                        
+                        if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                        {
+                            // Get first line (where command returns first match)
+                            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (lines.Length > 0)
+                            {
+                                return lines[0].Trim();
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors
+            }
+
+            return null;
         }
 
         public async Task<string?> GetLatestVersionAsync()
@@ -154,7 +246,11 @@ namespace ClaudeCodeInstaller.Core
         public async Task<bool> IsUpdateAvailableAsync(string currentVersion)
         {
             var latestVersion = await GetLatestVersionAsync();
-            if (latestVersion == null) return false;
+            if (latestVersion == null) 
+            {
+                await Task.CompletedTask;
+                return false;
+            }
             
             // Simple version comparison - enhance as needed
             return latestVersion != currentVersion;
@@ -162,14 +258,138 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task RunClaudeCodeAsync(string? arguments = null)
         {
+            // Use npx to run claude-code - this works regardless of PATH
+            // npx will find and execute the globally installed package
             var startInfo = new ProcessStartInfo
             {
-                FileName = "claude-code",
-                Arguments = arguments ?? "",
-                UseShellExecute = true
+                FileName = "cmd.exe",
+                Arguments = $"/k npx -y @anthropic-ai/claude-code {arguments ?? ""}",
+                UseShellExecute = true,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Normal,
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             };
 
-            Process.Start(startInfo);
+            var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                // Give process time to start
+                try
+                {
+                    await Task.Delay(500);
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+            }
+        }
+
+        private async Task<string?> FindClaudeCodePathAsync()
+        {
+            try
+            {
+                // Get npm's global bin directory
+                var binInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c npm bin -g",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                };
+
+                using (var process = Process.Start(binInfo))
+                {
+                    if (process != null)
+                    {
+                        var output = await process.StandardOutput.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+                        
+                        if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                        {
+                            string binDir = output.Trim();
+                            // Check for claude-code in the bin directory
+                            string[] possiblePaths = new[]
+                            {
+                                Path.Combine(binDir, "claude-code.cmd"),
+                                Path.Combine(binDir, "claude-code.exe"),
+                                Path.Combine(binDir, "claude-code")
+                            };
+
+                            foreach (var path in possiblePaths)
+                            {
+                                if (File.Exists(path))
+                                {
+                                    return path;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: Check AppData\npm (common Windows location)
+                string appDataNpm = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm");
+                string[] fallbackPaths = new[]
+                {
+                    Path.Combine(appDataNpm, "claude-code.cmd"),
+                    Path.Combine(appDataNpm, "claude-code.exe"),
+                    Path.Combine(appDataNpm, "claude-code")
+                };
+
+                foreach (var path in fallbackPaths)
+                {
+                    if (File.Exists(path))
+                    {
+                        return path;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors
+            }
+
+            return null;
+        }
+
+        private async Task<string?> GetNpmPrefixAsync()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c npm config get prefix",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process != null)
+                    {
+                        var output = await process.StandardOutput.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+                        
+                        if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                        {
+                            return output.Trim();
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors
+            }
+
+            return null;
         }
 
         public static bool IsWindows11OrLater()

@@ -30,7 +30,6 @@ This project follows the [Conventional Commits](https://www.conventionalcommits.
 
 Optional scope indicates the area of the codebase affected:
 - `core`: Core library changes
-- `console`: Console application changes
 - `winforms`: WinForms application changes
 - `tests`: Test changes
 - `docs`: Documentation changes

@@ -412,8 +412,15 @@ jobs:
       id: previous_tag
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
-        $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
-        if ($LASTEXITCODE -ne 0) {
+        $previousTag = ""
+        # Try to get the latest tag (not necessarily on HEAD^)
+        $result = git describe --tags --abbrev=0 2>&1
+        if ($LASTEXITCODE -eq 0 -and $result) {
+          $previousTag = $result.Trim()
+          Write-Host "Found latest tag: $previousTag"
+        } else {
+          # If no tags exist at all, that's fine - this is the first release
+          Write-Host "No previous tags found (this may be the first release)"
           $previousTag = ""
         }
         Write-Host "Previous tag: $previousTag"
@@ -487,7 +494,11 @@ jobs:
         }
         
         $changelog += "---`n"
-        $changelog += "**Full Changelog**: $previousTag...$currentTag"
+        if ($previousTag -ne "") {
+          $changelog += "**Full Changelog**: $previousTag...$currentTag"
+        } else {
+          $changelog += "**Full Changelog**: Initial release"
+        }
         
         Write-Host "Generated changelog:"
         Write-Host $changelog
