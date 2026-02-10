@@ -29,13 +29,13 @@ WORKDIR /src/src/ClaudeCodeInstaller.WinForms
 RUN dotnet publish --configuration Release --no-build --output /app/publish
 
 # Runtime image for console
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS runtime-console
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime-console
 WORKDIR /app
 COPY --from=publish-console /app/publish .
 ENTRYPOINT ["dotnet", "ClaudeCodeInstaller.Console.dll"]
 
 # Runtime image for WinForms (requires Windows base image)
-FROM mcr.microsoft.com/dotnet/runtime:8.0-nanoserver-ltsc2022 AS runtime-winforms
+FROM mcr.microsoft.com/dotnet/runtime:10.0-nanoserver-ltsc2022 AS runtime-winforms
 WORKDIR /app
 COPY --from=publish-winforms /app/publish .
 ENTRYPOINT ["dotnet", "ClaudeCodeInstaller.WinForms.dll"]
