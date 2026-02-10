@@ -232,6 +232,88 @@ jobs:
         Write-Host "Run 'dotnet list package --outdated' locally to see details."
         exit 1
 
+  codeql-analysis:
+    name: CodeQL Security Analysis
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: csharp
+        queries: security-and-quality
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:csharp"
+
+  security-code-scan:
+    name: .NET Security Code Analysis
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.nuget/packages
+          **/packages.lock.json
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build with security analyzers
+      run: |
+        Write-Host "Building with security analysis enabled..."
+        Write-Host "=========================================="
+        
+        # Build and capture security-related warnings
+        $buildOutput = dotnet build --configuration Release --verbosity normal 2>&1 | Out-String
+        
+        # Check for security-related analyzer warnings (CA5xxx series are security rules)
+        $securityWarnings = $buildOutput | Select-String -Pattern "warning CA(53|54|55|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74|75|76|77|78|79|80|81|82|83|84|85|86|87|88|89|90|91|92|93|94|95|96|97|98|99|00|01|02|03|04|05)\d+"
+        
+        if ($securityWarnings) {
+          Write-Host "::warning::Security-related code analysis warnings found:"
+          $securityWarnings | ForEach-Object { Write-Host $_ }
+          Write-Host "These should be reviewed for potential security issues."
+        } else {
+          Write-Host "✓ No security-related code analysis warnings"
+        }
+        
+        # Check build succeeded
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::Build failed"
+          exit 1
+        }
+
   virus-scan:
     name: Virus Scan
     runs-on: windows-latest
@@ -383,7 +465,7 @@ jobs:
   version-tag:
     name: Create RC Version Tag and Release
     runs-on: windows-latest
-    needs: [build, test, vulnerability-scan, virus-scan]
+    needs: [build, test, vulnerability-scan, virus-scan, codeql-analysis]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
