@@ -3,6 +3,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using ClaudeCodeInstaller.Core;
@@ -13,20 +14,31 @@ namespace ClaudeCodeInstaller.WinForms
     {
         private InstallationService? _installationService;
         private HealthCheckService? _healthCheckService;
+        private InstallerUpdateService? _installerUpdateService;
         private Button? _installButton;
         private Button? _runButton;
         private Button? _checkUpdateButton;
         private ProgressBar? _progressBar;
         private Label? _statusLabel;
         private Label? _versionLabel;
+        private Label? _installerUpdateLabel;
         private TextBox? _logTextBox;
-        private string _currentVersion = "1.0.0";
+        private string _currentVersion;
 
         public MainForm()
         {
+            // Get version from assembly
+            var assembly = Assembly.GetExecutingAssembly();
+            var versionAttribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            var fileVersionAttribute = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
+            _currentVersion = versionAttribute?.InformationalVersion ?? 
+                             fileVersionAttribute?.Version ??
+                             assembly.GetName().Version?.ToString() ?? "1.0.0";
+            
             InitializeComponent();
             _installationService = new InstallationService();
             _healthCheckService = new HealthCheckService(_installationService);
+            _installerUpdateService = new InstallerUpdateService();
         }
 
         private void InitializeComponent()
@@ -57,6 +69,18 @@ namespace ClaudeCodeInstaller.WinForms
                 Location = new Point(20, 60)
             };
             this.Controls.Add(_versionLabel);
+
+            // Installer update label (initially hidden)
+            _installerUpdateLabel = new Label
+            {
+                Text = "",
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor = Color.Orange,
+                AutoSize = true,
+                Location = new Point(250, 60),
+                Visible = false
+            };
+            this.Controls.Add(_installerUpdateLabel);
 
             // Status label
             _statusLabel = new Label
@@ -136,6 +160,7 @@ namespace ClaudeCodeInstaller.WinForms
 
             // Load initial state
             _ = LoadInitialStateAsync();
+            _ = CheckInstallerUpdateAsync();
         }
 
         private async Task LoadInitialStateAsync()
@@ -179,33 +204,36 @@ namespace ClaudeCodeInstaller.WinForms
 
                 // Check prerequisites
                 Log("Checking prerequisites...");
-                bool hasPrerequisites = await _installationService.CheckPrerequisitesAsync();
+                bool hasNode = await _installationService!.CheckCommandAsync("node --version");
+                bool hasNpm = await _installationService.CheckCommandAsync("npm --version");
                 
-                if (!hasPrerequisites)
+                if (!hasNode || !hasNpm)
                 {
-                    Log("✗ Node.js not found. Please install Node.js first.");
-                    MessageBox.Show("Node.js is required but not found. Please install Node.js v18 or later from https://nodejs.org/", 
+                    string missing = !hasNode ? "Node.js" : "npm";
+                    Log($"✗ {missing} not found. Please install Node.js first.");
+                    MessageBox.Show($"{missing} is required but not found. Please install Node.js v18 or later (which includes npm) from https://nodejs.org/", 
                         "Prerequisites Missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     _installButton.Enabled = true;
                     _checkUpdateButton.Enabled = true;
                     return;
                 }
-                Log("✓ Prerequisites OK");
+                Log("✓ Prerequisites OK (Node.js and npm found)");
 
-                // Download
-                Log("Downloading Claude Code...");
+                // Install via npm (download is handled internally)
+                Log("Installing Claude Code via npm...");
+                _statusLabel.Text = "Installing Claude Code...";
                 var progress = new Progress<int>(percentage =>
                 {
                     _progressBar.Value = percentage;
-                    _statusLabel.Text = $"Downloading... {percentage}%";
+                    _statusLabel.Text = $"Installing... {percentage}%";
                 });
 
                 string installerPath = await _installationService.DownloadClaudeCodeAsync(progress: progress);
-                Log("✓ Download complete");
+                Log("✓ Download/preparation complete");
 
                 // Install
-                Log("Installing Claude Code...");
-                _statusLabel.Text = "Installing...";
+                Log("Running npm install...");
+                _statusLabel.Text = "Installing via npm...";
                 await _installationService.InstallClaudeCodeAsync(installerPath);
                 Log("✓ Installation complete");
 
@@ -270,11 +298,31 @@ namespace ClaudeCodeInstaller.WinForms
 
             try
             {
-                bool updateAvailable = await _installationService!.IsUpdateAvailableAsync(_currentVersion);
+                // Check for Claude Code updates
+                bool claudeCodeUpdateAvailable = await _installationService!.IsUpdateAvailableAsync(_currentVersion);
                 
-                if (updateAvailable)
+                // Check for installer updates
+                var installerUpdateInfo = await _installerUpdateService!.CheckForInstallerUpdateAsync(_currentVersion);
+                bool installerUpdateAvailable = installerUpdateInfo != null && !installerUpdateInfo.IsLatest;
+
+                if (installerUpdateAvailable)
                 {
-                    Log("Update available!");
+                    Log($"Installer update available: {installerUpdateInfo!.Version}");
+                    var result = MessageBox.Show(
+                        $"A newer version of the installer ({installerUpdateInfo.Version}) is available.\n\n" +
+                        $"Current version: {_currentVersion}\n" +
+                        $"Latest version: {installerUpdateInfo.Version}\n\n" +
+                        "Would you like to update the installer now?",
+                        "Installer Update Available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                    
+                    if (result == DialogResult.Yes)
+                    {
+                        await UpdateInstallerAsync(installerUpdateInfo);
+                    }
+                }
+                else if (claudeCodeUpdateAvailable)
+                {
+                    Log("Claude Code update available!");
                     var result = MessageBox.Show("A newer version of Claude Code is available. Would you like to install it now?", 
                         "Update Available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                     
@@ -285,8 +333,8 @@ namespace ClaudeCodeInstaller.WinForms
                 }
                 else
                 {
-                    Log("✓ You have the latest version");
-                    MessageBox.Show("You have the latest version of Claude Code installed.", "No Updates", 
+                    Log("✓ You have the latest versions");
+                    MessageBox.Show("You have the latest version of both the installer and Claude Code.", "No Updates", 
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
@@ -299,6 +347,82 @@ namespace ClaudeCodeInstaller.WinForms
             finally
             {
                 _checkUpdateButton.Enabled = true;
+            }
+        }
+
+        private async Task CheckInstallerUpdateAsync()
+        {
+            try
+            {
+                var updateInfo = await _installerUpdateService!.CheckForInstallerUpdateAsync(_currentVersion);
+                if (updateInfo != null && !updateInfo.IsLatest)
+                {
+                    _installerUpdateLabel!.Text = $"⚠ Installer update available: {updateInfo.Version}";
+                    _installerUpdateLabel.Visible = true;
+                    _installerUpdateLabel.ForeColor = Color.Orange;
+                    Log($"Installer update available: {updateInfo.Version}");
+                }
+            }
+            catch
+            {
+                // Silently fail - don't show error on startup
+            }
+        }
+
+        private async Task UpdateInstallerAsync(VersionInfo updateInfo)
+        {
+            try
+            {
+                _checkUpdateButton!.Enabled = false;
+                _installButton!.Enabled = false;
+                _runButton!.Enabled = false;
+                _statusLabel!.Text = "Downloading installer update...";
+                Log($"Downloading installer update {updateInfo.Version}...");
+
+                var progress = new Progress<int>(percentage =>
+                {
+                    _progressBar!.Value = percentage;
+                    _statusLabel.Text = $"Downloading update... {percentage}%";
+                });
+
+                string installerPath = await _installerUpdateService!.DownloadInstallerUpdateAsync(updateInfo.DownloadUrl, progress);
+                Log("✓ Download complete");
+
+                _statusLabel.Text = "Installing update...";
+                Log("Installing update...");
+
+                var result = MessageBox.Show(
+                    "The installer update has been downloaded.\n\n" +
+                    "The application will close and restart with the new version.\n\n" +
+                    "Click OK to continue.",
+                    "Ready to Update", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+
+                if (result == DialogResult.OK)
+                {
+                    await _installerUpdateService.InstallUpdateAsync(installerPath);
+                }
+                else
+                {
+                    // Clean up downloaded file
+                    try
+                    {
+                        if (File.Exists(installerPath))
+                            File.Delete(installerPath);
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"✗ Error updating installer: {ex.Message}");
+                MessageBox.Show($"Failed to update installer: {ex.Message}", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _checkUpdateButton!.Enabled = true;
+                _installButton!.Enabled = true;
+                _runButton!.Enabled = true;
             }
         }
 

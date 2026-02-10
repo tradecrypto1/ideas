@@ -13,7 +13,8 @@ namespace ClaudeCodeInstaller.Core
     public class InstallationService
     {
         private readonly HttpClient _httpClient;
-        private const string CLAUDE_CODE_DOWNLOAD_URL = "https://storage.googleapis.com/osprey-downloads-c1ecf5a2/claude_code_latest_windows_x86_64.exe";
+        // Claude Code is installed via npm, not direct download
+        // Using npm install method as it's the official installation method
         private const string VERSION_CHECK_URL = "https://api.github.com/repos/anthropics/claude-code/releases/latest";
 
         public InstallationService(HttpClient? httpClient = null)
@@ -24,74 +25,63 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task<bool> CheckPrerequisitesAsync()
         {
-            return await CheckCommandAsync("node --version");
+            // Check for both Node.js and npm (npm comes with Node.js)
+            bool hasNode = await CheckCommandAsync("node --version");
+            bool hasNpm = await CheckCommandAsync("npm --version");
+            return hasNode && hasNpm;
         }
 
         public async Task<string> DownloadClaudeCodeAsync(string? downloadPath = null, IProgress<int>? progress = null)
         {
-            downloadPath ??= Path.Combine(Path.GetTempPath(), "claude-code-installer.exe");
-
-            using (var response = await _httpClient.GetAsync(CLAUDE_CODE_DOWNLOAD_URL, HttpCompletionOption.ResponseHeadersRead))
+            // Claude Code is installed via npm, not downloaded as an exe
+            // This method now installs via npm
+            progress?.Report(0);
+            
+            // Check if npm is available
+            if (!await CheckCommandAsync("npm --version"))
             {
-                response.EnsureSuccessStatusCode();
-
-                var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-                var canReportProgress = totalBytes != -1;
-
-                using (var contentStream = await response.Content.ReadAsStreamAsync())
-                using (var fileStream = new FileStream(downloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
-                {
-                    var totalRead = 0L;
-                    var buffer = new byte[8192];
-                    var isMoreToRead = true;
-
-                    do
-                    {
-                        var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
-                        if (read == 0)
-                        {
-                            isMoreToRead = false;
-                        }
-                        else
-                        {
-                            await fileStream.WriteAsync(buffer, 0, read);
-                            totalRead += read;
-
-                            if (canReportProgress && progress != null)
-                            {
-                                var percentage = (int)((totalRead * 100) / totalBytes);
-                                progress.Report(percentage);
-                            }
-                        }
-                    } while (isMoreToRead);
-                }
+                throw new Exception("npm is required but not found. Please install Node.js which includes npm.");
             }
 
-            return downloadPath;
+            progress?.Report(50);
+            
+            // Return a placeholder path since we're using npm install
+            return "npm-install";
         }
 
         public async Task InstallClaudeCodeAsync(string installerPath)
         {
+            // Install Claude Code via npm
             var startInfo = new ProcessStartInfo
             {
-                FileName = installerPath,
-                Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
-                UseShellExecute = true,
-                Verb = "runas"
+                FileName = "npm",
+                Arguments = "install -g @anthropic-ai/claude-code",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
             };
 
             using (var process = Process.Start(startInfo))
             {
                 if (process != null)
                 {
+                    // Read output for progress
+                    string? output = await process.StandardOutput.ReadToEndAsync();
+                    string? error = await process.StandardError.ReadToEndAsync();
+                    
                     await process.WaitForExitAsync();
 
                     if (process.ExitCode != 0)
                     {
-                        throw new Exception($"Installer exited with code {process.ExitCode}");
+                        throw new Exception($"npm install failed with code {process.ExitCode}. Error: {error}");
                     }
 
                     await Task.Delay(2000); // Wait for PATH to update
+                }
+                else
+                {
+                    throw new Exception("Failed to start npm process");
                 }
             }
         }
@@ -164,7 +154,6 @@ namespace ClaudeCodeInstaller.Core
         public async Task<bool> IsUpdateAvailableAsync(string currentVersion)
         {
             var latestVersion = await GetLatestVersionAsync();
-            await Task.CompletedTask; // Ensure async
             if (latestVersion == null) return false;
             
             // Simple version comparison - enhance as needed

@@ -110,9 +110,9 @@ namespace ClaudeCodeInstaller.Console
             if (_installationService == null) return;
 
             SysConsole.Write("   • Checking for Node.js... ");
-            bool hasNodeJs = await _installationService.CheckPrerequisitesAsync();
-
-            if (hasNodeJs)
+            bool hasNode = await _installationService.CheckCommandAsync("node --version");
+            
+            if (hasNode)
             {
                 SysConsole.ForegroundColor = ConsoleColor.Green;
                 SysConsole.WriteLine("✓ Found");
@@ -141,6 +141,25 @@ namespace ClaudeCodeInstaller.Console
                 Environment.Exit(0);
             }
 
+            SysConsole.Write("   • Checking for npm... ");
+            bool hasNpm = await _installationService.CheckCommandAsync("npm --version");
+            
+            if (hasNpm)
+            {
+                SysConsole.ForegroundColor = ConsoleColor.Green;
+                SysConsole.WriteLine("✓ Found");
+                SysConsole.ResetColor();
+            }
+            else
+            {
+                SysConsole.ForegroundColor = ConsoleColor.Yellow;
+                SysConsole.WriteLine("✗ Not found");
+                SysConsole.ResetColor();
+                SysConsole.WriteLine("     npm is required but not found. npm comes with Node.js.");
+                SysConsole.WriteLine("     Please reinstall Node.js from: https://nodejs.org/");
+                Environment.Exit(0);
+            }
+
             SysConsole.Write("   • Checking for Git... ");
             bool hasGit = await _installationService.CheckCommandAsync("git --version");
 
@@ -164,7 +183,7 @@ namespace ClaudeCodeInstaller.Console
             if (_installationService == null)
                 throw new InvalidOperationException("InstallationService not initialized");
 
-            SysConsole.WriteLine($"   Downloading Claude Code...");
+            SysConsole.WriteLine($"   Preparing Claude Code installation...");
             SysConsole.Write("   Progress: ");
 
             var progress = new Progress<int>(percentage =>
@@ -175,7 +194,7 @@ namespace ClaudeCodeInstaller.Console
             string installerPath = await _installationService.DownloadClaudeCodeAsync(progress: progress);
             SysConsole.WriteLine();
             SysConsole.ForegroundColor = ConsoleColor.Green;
-            SysConsole.WriteLine("   ✓ Download complete!");
+            SysConsole.WriteLine("   ✓ Preparation complete!");
             SysConsole.ResetColor();
             return installerPath;
         }
@@ -185,7 +204,7 @@ namespace ClaudeCodeInstaller.Console
             if (_installationService == null)
                 throw new InvalidOperationException("InstallationService not initialized");
 
-            SysConsole.WriteLine("   Running installer...");
+            SysConsole.WriteLine("   Installing Claude Code via npm...");
             SysConsole.WriteLine("   (This may take a few moments)");
             SysConsole.WriteLine();
 
@@ -196,14 +215,12 @@ namespace ClaudeCodeInstaller.Console
                 SysConsole.WriteLine("   ✓ Installation successful!");
                 SysConsole.ResetColor();
             }
-            finally
+            catch (Exception ex)
             {
-                try
-                {
-                    if (System.IO.File.Exists(installerPath))
-                        System.IO.File.Delete(installerPath);
-                }
-                catch { }
+                SysConsole.ForegroundColor = ConsoleColor.Red;
+                SysConsole.WriteLine($"   ✗ Installation failed: {ex.Message}");
+                SysConsole.ResetColor();
+                throw;
             }
         }
 

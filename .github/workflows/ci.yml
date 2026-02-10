@@ -59,16 +59,6 @@ jobs:
     # ============================================
     # Code Security Scans (Fail Fast)
     # ============================================
-    - name: Cache OWASP Dependency Check database
-      uses: actions/cache@v5
-      with:
-        path: |
-          ~/.dependency-check/data
-          ${{ runner.tool_cache }}/dependency-check
-        key: ${{ runner.os }}-owasp-db
-        restore-keys: |
-          ${{ runner.os }}-owasp-db-
-
     # Note: CodeQL is handled by GitHub's default Code Scanning setup
     # Running it in workflow conflicts with default setup, so we skip it here
     # CodeQL will run automatically via GitHub's Code Scanning feature
@@ -250,28 +240,8 @@ jobs:
           Write-Host "✓ No vulnerable packages found"
         }
 
-    - name: Run OWASP Dependency Check
-      uses: dependency-check/Dependency-Check_Action@main
-      with:
-        project: 'ClaudeCodeInstaller'
-        path: '.'
-        format: 'HTML'
-        args: >
-          --enableRetired
-          --enableExperimental
-          --failOnCVSS 7
-      continue-on-error: true
-
-    - name: Upload vulnerability report
-      if: always()
-      uses: actions/upload-artifact@v6
-      with:
-        name: vulnerability-report
-        path: |
-          reports/**/*.html
-          dependency-check-report.html
-        if-no-files-found: ignore
-        retention-days: 7
+    # Note: OWASP Dependency Check requires Linux, but we're on Windows
+    # Using dotnet list package --vulnerable instead which works on Windows
 
     # ============================================
     # Build
