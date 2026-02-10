@@ -141,9 +141,7 @@ jobs:
         git tag -a "$RC_TAG" -m "Release Candidate: $RC_TAG"
         git push origin "$RC_TAG"
         echo "Created tag: $RC_TAG"
-
-    - name: Output tag
-      run: echo "RC Tag: ${{ steps.create_tag.outputs.tag }}"
+        echo "RC Tag: $RC_TAG"
 
   deploy:
     name: Deploy to ACR
