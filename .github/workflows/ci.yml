@@ -60,18 +60,19 @@ jobs:
     # Code Security Scans (Fail Fast)
     # ============================================
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: csharp
         queries: security-and-quality
 
     - name: Autobuild for CodeQL
-      uses: github/codeql-action/autobuild@v3
+      uses: github/codeql-action/autobuild@v4
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:csharp"
+      uses: github/codeql-action/analyze@v4
+
+    - name: Upload SARIF
+      uses: github/codeql-action/upload-sarif@v4
 
     - name: Build with security analyzers
       run: |
@@ -241,7 +242,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: vulnerability-report
-        path: reports/*.html
+        path: |
+          reports/**/*.html
+          dependency-check-report.html
+        if-no-files-found: ignore
         retention-days: 7
 
     # ============================================
@@ -299,18 +303,22 @@ jobs:
           exit 0
         }
         
-        # Find executables - artifacts are downloaded to current directory
-        Write-Host "Looking for executables..."
+        # Find executables in artifacts directory (where we published)
+        Write-Host "Looking for executables in artifacts directory..."
         Write-Host "Current directory: $(Get-Location)"
         
-        # Search recursively from current directory
-        $exeFiles = Get-ChildItem -Recurse -Filter *.exe -ErrorAction SilentlyContinue
+        # Check if artifacts directory exists
+        if (-not (Test-Path "artifacts/winforms")) {
+          Write-Host "::error::Artifacts directory not found. Build may have failed."
+          exit 1
+        }
+        
+        # Search for executables in artifacts directory
+        $exeFiles = Get-ChildItem -Path "artifacts/winforms" -Filter *.exe -ErrorAction SilentlyContinue
         
         if ($exeFiles.Count -eq 0) {
-          Write-Host "No executables found. Listing directory structure:"
-          Get-ChildItem -Recurse -Directory | Select-Object FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
-          Write-Host "All files:"
-          Get-ChildItem -Recurse -File | Select-Object FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
+          Write-Host "No executables found in artifacts/winforms. Listing directory:"
+          Get-ChildItem -Path "artifacts/winforms" -Recurse | Select-Object FullName | ForEach-Object { Write-Host "  $($_.FullName)" }
           Write-Host "::error::No executables found to scan"
           exit 1
         }
