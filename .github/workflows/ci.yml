@@ -34,7 +34,7 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.nuget/packages
@@ -44,7 +44,7 @@ jobs:
           ${{ runner.os }}-nuget-
 
     - name: Cache build outputs
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           **/bin
@@ -60,7 +60,7 @@ jobs:
     # Code Security Scans (Fail Fast)
     # ============================================
     - name: Cache OWASP Dependency Check database
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.dependency-check/data
@@ -274,7 +274,7 @@ jobs:
     # Tests
     # ============================================
     - name: Cache test results
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           **/TestResults
@@ -296,7 +296,7 @@ jobs:
     # Virus Scan
     # ============================================
     - name: Cache Windows Defender definitions
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           C:\ProgramData\Microsoft\Windows Defender\Definition Updates
