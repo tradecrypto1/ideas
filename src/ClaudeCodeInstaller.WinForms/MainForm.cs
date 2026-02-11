@@ -16,6 +16,7 @@ namespace ClaudeCodeInstaller.WinForms
         private HealthCheckService? _healthCheckService;
         private InstallerUpdateService? _installerUpdateService;
         private Button? _installButton;
+        private Button? _uninstallButton;
         private Button? _runButton;
         private Button? _checkUpdateButton;
         private ProgressBar? _progressBar;
@@ -26,16 +27,10 @@ namespace ClaudeCodeInstaller.WinForms
         private TabControl? _tabControl;
         private TabPage? _mainTab;
         private TabPage? _advancedTab;
-        private TabPage? _pluginsTab;
         private TextBox? _pathsTextBox;
         private TextBox? _workingDirectoryTextBox;
         private Button? _browseDirectoryButton;
         private Button? _saveWorkingDirectoryButton;
-        private ListBox? _pluginsListBox;
-        private TextBox? _pluginDescriptionTextBox;
-        private Button? _installPluginButton;
-        private Button? _uninstallPluginButton;
-        private Button? _refreshPluginsButton;
         private string _currentVersion;
         private string _workingDirectory;
 
@@ -61,17 +56,18 @@ namespace ClaudeCodeInstaller.WinForms
         private void InitializeComponent()
         {
             this.Text = "Claude Code Installer & Runner";
-            this.Size = new Size(700, 650);
+            this.Size = new Size(800, 700);
+            this.MinimumSize = new Size(750, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
+            this.MinimizeBox = true;
 
             // Create TabControl
             _tabControl = new TabControl
             {
                 Location = new Point(10, 10),
-                Size = new Size(680, 600),
+                Size = new Size(780, 650),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
 
@@ -84,11 +80,6 @@ namespace ClaudeCodeInstaller.WinForms
             _advancedTab = new TabPage("Advanced");
             InitializeAdvancedTab();
             _tabControl.TabPages.Add(_advancedTab);
-
-            // Plugins Tab
-            _pluginsTab = new TabPage("Plugins");
-            InitializePluginsTab();
-            _tabControl.TabPages.Add(_pluginsTab);
 
             this.Controls.Add(_tabControl);
 
@@ -198,11 +189,38 @@ namespace ClaudeCodeInstaller.WinForms
             _checkUpdateButton.Click += CheckUpdateButton_Click;
             _mainTab.Controls.Add(_checkUpdateButton);
 
+            // Uninstall button
+            _uninstallButton = new Button
+            {
+                Text = "Uninstall Claude Code",
+                Location = new Point(190, 480),
+                Size = new Size(150, 35),
+                Font = new Font("Segoe UI", 9),
+                BackColor = Color.FromArgb(220, 53, 69),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            _uninstallButton.Click += UninstallButton_Click;
+            _mainTab.Controls.Add(_uninstallButton);
+
+            // Install Claude Adapter button
+            var installAdapterButton = new Button
+            {
+                Text = "Install Claude Adapter",
+                Location = new Point(20, 480),
+                Size = new Size(180, 35),
+                Font = new Font("Segoe UI", 9),
+                BackColor = Color.FromArgb(0, 120, 215),
+                ForeColor = Color.White
+            };
+            installAdapterButton.Click += async (s, e) => await InstallAdapterButton_Click();
+            _mainTab.Controls.Add(installAdapterButton);
+
             // Health check button
             var healthCheckButton = new Button
             {
                 Text = "Health Check",
-                Location = new Point(20, 480),
+                Location = new Point(210, 480),
                 Size = new Size(150, 35),
                 Font = new Font("Segoe UI", 9)
             };
@@ -299,252 +317,6 @@ namespace ClaudeCodeInstaller.WinForms
 
             // Load paths initially
             _ = RefreshPathsAsync();
-        }
-
-        private void InitializePluginsTab()
-        {
-            if (_pluginsTab == null) return;
-
-            // Title
-            var titleLabel = new Label
-            {
-                Text = "Claude Code Plugins",
-                Font = new Font("Segoe UI", 14, FontStyle.Bold),
-                AutoSize = true,
-                Location = new Point(20, 20)
-            };
-            _pluginsTab.Controls.Add(titleLabel);
-
-            // Refresh button
-            _refreshPluginsButton = new Button
-            {
-                Text = "Refresh",
-                Location = new Point(600, 15),
-                Size = new Size(70, 30),
-                Font = new Font("Segoe UI", 9)
-            };
-            _refreshPluginsButton.Click += async (s, e) => await RefreshPluginsAsync();
-            _pluginsTab.Controls.Add(_refreshPluginsButton);
-
-            // Plugins list box
-            _pluginsListBox = new ListBox
-            {
-                Location = new Point(20, 60),
-                Size = new Size(300, 400),
-                Font = new Font("Segoe UI", 9),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left
-            };
-            _pluginsListBox.SelectedIndexChanged += PluginsListBox_SelectedIndexChanged;
-            _pluginsTab.Controls.Add(_pluginsListBox);
-
-            // Description text box
-            _pluginDescriptionTextBox = new TextBox
-            {
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Location = new Point(340, 60),
-                Size = new Size(330, 300),
-                Font = new Font("Segoe UI", 9),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
-            };
-            _pluginsTab.Controls.Add(_pluginDescriptionTextBox);
-
-            // Install button
-            _installPluginButton = new Button
-            {
-                Text = "Install Plugin",
-                Location = new Point(340, 380),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 9),
-                Enabled = false
-            };
-            _installPluginButton.Click += async (s, e) => await InstallPluginButton_Click();
-            _pluginsTab.Controls.Add(_installPluginButton);
-
-            // Uninstall button
-            _uninstallPluginButton = new Button
-            {
-                Text = "Uninstall Plugin",
-                Location = new Point(520, 380),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 9),
-                Enabled = false
-            };
-            _uninstallPluginButton.Click += async (s, e) => await UninstallPluginButton_Click();
-            _pluginsTab.Controls.Add(_uninstallPluginButton);
-
-            // Load plugins initially
-            _ = RefreshPluginsAsync();
-        }
-
-        private List<PluginInfo>? _availablePlugins;
-
-        private async Task RefreshPluginsAsync()
-        {
-            if (_pluginsListBox == null || _installationService == null) return;
-
-            _pluginsListBox.Items.Clear();
-            _pluginDescriptionTextBox!.Text = "Loading plugins...";
-
-            try
-            {
-                _availablePlugins = await _installationService.GetAvailablePluginsAsync();
-
-                foreach (var plugin in _availablePlugins)
-                {
-                    string displayText = plugin.IsInstalled 
-                        ? $"{plugin.Name} ✓ (v{plugin.InstalledVersion})"
-                        : plugin.Name;
-                    _pluginsListBox.Items.Add(displayText);
-                }
-
-                if (_availablePlugins.Count > 0)
-                {
-                    _pluginsListBox.SelectedIndex = 0;
-                }
-            }
-            catch (Exception ex)
-            {
-                _pluginDescriptionTextBox.Text = $"Error loading plugins: {ex.Message}";
-            }
-        }
-
-        private void PluginsListBox_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            if (_pluginsListBox == null || _availablePlugins == null || _pluginDescriptionTextBox == null) return;
-
-            int selectedIndex = _pluginsListBox.SelectedIndex;
-            if (selectedIndex >= 0 && selectedIndex < _availablePlugins.Count)
-            {
-                var plugin = _availablePlugins[selectedIndex];
-                
-                string description = $"Name: {plugin.Name}\n";
-                description += $"Package: {plugin.PackageName}\n";
-                description += $"Status: {(plugin.IsInstalled ? $"Installed (v{plugin.InstalledVersion})" : "Not Installed")}\n";
-                description += $"GitHub: {plugin.GitHubUrl}\n\n";
-                description += $"Description:\n{plugin.Description}";
-
-                _pluginDescriptionTextBox.Text = description;
-
-                _installPluginButton!.Enabled = !plugin.IsInstalled;
-                _uninstallPluginButton!.Enabled = plugin.IsInstalled;
-            }
-        }
-
-        private async Task InstallPluginButton_Click()
-        {
-            if (_pluginsListBox == null || _availablePlugins == null || _installationService == null) return;
-
-            int selectedIndex = _pluginsListBox.SelectedIndex;
-            if (selectedIndex < 0 || selectedIndex >= _availablePlugins.Count) return;
-
-            var plugin = _availablePlugins[selectedIndex];
-
-            if (plugin.IsInstalled)
-            {
-                MessageBox.Show($"{plugin.Name} is already installed.", "Already Installed", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            _installPluginButton!.Enabled = false;
-            _uninstallPluginButton!.Enabled = false;
-
-            try
-            {
-                var result = MessageBox.Show(
-                    $"Install {plugin.Name}?\n\nPackage: {plugin.PackageName}\n\nThis will install the plugin globally via npm.",
-                    "Install Plugin", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-                if (result == DialogResult.Yes)
-                {
-                    Log($"Installing {plugin.Name}...");
-                    var progress = new Progress<int>(percentage =>
-                    {
-                        // Could update a progress bar here if needed
-                    });
-
-                    bool success = await _installationService.InstallPluginAsync(plugin.PackageName, progress);
-
-                    if (success)
-                    {
-                        Log($"✓ {plugin.Name} installed successfully!");
-                        MessageBox.Show($"{plugin.Name} has been installed successfully!", "Success", 
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        await RefreshPluginsAsync();
-                    }
-                    else
-                    {
-                        throw new Exception("Installation returned false");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"✗ Error installing {plugin.Name}: {ex.Message}");
-                MessageBox.Show($"Failed to install {plugin.Name}:\n{ex.Message}", "Error", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                _installPluginButton.Enabled = true;
-            }
-        }
-
-        private async Task UninstallPluginButton_Click()
-        {
-            if (_pluginsListBox == null || _availablePlugins == null || _installationService == null) return;
-
-            int selectedIndex = _pluginsListBox.SelectedIndex;
-            if (selectedIndex < 0 || selectedIndex >= _availablePlugins.Count) return;
-
-            var plugin = _availablePlugins[selectedIndex];
-
-            if (!plugin.IsInstalled)
-            {
-                MessageBox.Show($"{plugin.Name} is not installed.", "Not Installed", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            _installPluginButton!.Enabled = false;
-            _uninstallPluginButton!.Enabled = false;
-
-            try
-            {
-                var result = MessageBox.Show(
-                    $"Uninstall {plugin.Name}?\n\nPackage: {plugin.PackageName}\n\nThis will remove the plugin from your system.",
-                    "Uninstall Plugin", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-                if (result == DialogResult.Yes)
-                {
-                    Log($"Uninstalling {plugin.Name}...");
-                    bool success = await _installationService.UninstallPluginAsync(plugin.PackageName);
-
-                    if (success)
-                    {
-                        Log($"✓ {plugin.Name} uninstalled successfully!");
-                        MessageBox.Show($"{plugin.Name} has been uninstalled successfully!", "Success", 
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        await RefreshPluginsAsync();
-                    }
-                    else
-                    {
-                        throw new Exception("Uninstallation returned false");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"✗ Error uninstalling {plugin.Name}: {ex.Message}");
-                MessageBox.Show($"Failed to uninstall {plugin.Name}:\n{ex.Message}", "Error", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                _installPluginButton.Enabled = true;
-            }
         }
 
         private void BrowseDirectoryButton_Click(object? sender, EventArgs e)
@@ -682,12 +454,23 @@ namespace ClaudeCodeInstaller.WinForms
         {
             Log("Checking installation status...");
             bool isInstalled = await _installationService!.VerifyInstallationAsync();
+            bool isRunning = await _installationService.IsClaudeCodeRunningAsync();
+            
             _runButton!.Enabled = isInstalled;
+            _uninstallButton!.Enabled = isInstalled;
             
             if (isInstalled)
             {
-                Log("✓ Claude Code is installed and ready!");
-                _statusLabel!.Text = "Claude Code is installed";
+                if (isRunning)
+                {
+                    Log("Claude Code is installed and currently running.");
+                    _statusLabel!.Text = "Claude Code is installed and running";
+                }
+                else
+                {
+                    Log("Claude Code is installed and ready to use.");
+                    _statusLabel!.Text = "Claude Code is installed";
+                }
             }
             else
             {
@@ -700,6 +483,8 @@ namespace ClaudeCodeInstaller.WinForms
         {
             _installButton!.Enabled = false;
             _checkUpdateButton!.Enabled = false;
+            _runButton!.Enabled = false;
+            _uninstallButton!.Enabled = false;
             _progressBar!.Value = 0;
             _statusLabel!.Text = "Installing...";
 
@@ -707,14 +492,31 @@ namespace ClaudeCodeInstaller.WinForms
             {
                 Log("Starting installation process...");
 
+                // Check if Claude Code is running and stop it
+                bool wasRunning = await _installationService!.IsClaudeCodeRunningAsync();
+                if (wasRunning)
+                {
+                    Log("Claude Code is currently running. Stopping it...");
+                    _statusLabel.Text = "Stopping Claude Code...";
+                    await _installationService.StopClaudeCodeAsync();
+                    Log("✓ Claude Code stopped");
+                    await Task.Delay(1000);
+                }
+
+                // Check if already installed
+                bool isInstalled = await _installationService.VerifyInstallationAsync();
+                if (isInstalled)
+                {
+                    Log("Claude Code is already installed. Updating...");
+                }
+
                 // Check for updates first
                 Log("Checking for updates...");
-                bool updateAvailable = await _installationService!.IsUpdateAvailableAsync(_currentVersion);
+                bool updateAvailable = await _installationService.IsUpdateAvailableAsync(_currentVersion);
                 
                 if (updateAvailable)
                 {
-                    Log("Update available! Uninstalling current version...");
-                    // Uninstall logic would go here
+                    Log("Update available! Updating installation...");
                 }
 
                 // Check prerequisites (native installer doesn't require Node.js/npm)
@@ -741,6 +543,7 @@ namespace ClaudeCodeInstaller.WinForms
 
                 // Verify
                 Log("Verifying installation...");
+                _statusLabel.Text = "Verifying installation...";
                 bool verified = await _installationService.VerifyInstallationAsync();
                 
                 if (verified)
@@ -748,15 +551,51 @@ namespace ClaudeCodeInstaller.WinForms
                     Log("✓ Installation verified successfully!");
                     _statusLabel!.Text = "Installation successful!";
                     _runButton!.Enabled = true;
+                    _uninstallButton!.Enabled = true;
                     MessageBox.Show("Claude Code has been installed successfully!", "Success", 
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    Log("⚠ Installation completed but verification failed. You may need to restart.");
-                    _statusLabel.Text = "Installation completed (verification pending)";
-                    MessageBox.Show("Installation completed but verification failed. Please restart your computer and try running Claude Code.", 
-                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    Log("⚠ Installation completed but PATH may not be updated yet.");
+                    Log("The installation files are present, but the command may not be available until you:");
+                    Log("  1. Close and reopen this application, OR");
+                    Log("  2. Open a new terminal/command prompt, OR");
+                    Log("  3. Restart your computer");
+                    _statusLabel.Text = "Installation completed (restart recommended)";
+                    
+                    var result = MessageBox.Show(
+                        "Claude Code installation completed, but the PATH environment variable may not be updated yet.\n\n" +
+                        "To use Claude Code, please:\n" +
+                        "• Close and reopen this application, OR\n" +
+                        "• Open a new terminal/command prompt, OR\n" +
+                        "• Restart your computer\n\n" +
+                        "The installation files are present and will work once PATH is refreshed.\n\n" +
+                        "Would you like to try running Claude Code anyway?",
+                        "Installation Complete",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information);
+                    
+                    if (result == DialogResult.Yes)
+                    {
+                        // Try to run it anyway - might work if PATH was updated
+                        try
+                        {
+                            await _installationService.RunClaudeCodeAsync();
+                            _runButton!.Enabled = true;
+                            _uninstallButton!.Enabled = true;
+                        }
+                        catch
+                        {
+                            // If it fails, user will need to restart
+                        }
+                    }
+                    else
+                    {
+                        // Enable buttons anyway since files are installed
+                        _runButton!.Enabled = true;
+                        _uninstallButton!.Enabled = true;
+                    }
                 }
             }
             catch (Exception ex)
@@ -770,7 +609,98 @@ namespace ClaudeCodeInstaller.WinForms
             {
                 _installButton.Enabled = true;
                 _checkUpdateButton.Enabled = true;
+                // Refresh installation status
+                bool isInstalled = await _installationService!.VerifyInstallationAsync();
+                _runButton!.Enabled = isInstalled;
+                _uninstallButton!.Enabled = isInstalled;
                 _progressBar.Value = 0;
+            }
+        }
+
+        private async void UninstallButton_Click(object? sender, EventArgs e)
+        {
+            if (_installationService == null) return;
+
+            // Check if Claude Code is running
+            bool isRunning = await _installationService.IsClaudeCodeRunningAsync();
+            string message = "Are you sure you want to uninstall Claude Code?\n\n" +
+                "This will remove Claude Code from your system.\n\n";
+            
+            if (isRunning)
+            {
+                message += "⚠ Claude Code is currently running. It will be stopped before uninstallation.\n\n";
+            }
+            
+            message += "Note: This will not remove your Claude Code configuration files or settings.";
+
+            // Confirm uninstall
+            var result = MessageBox.Show(
+                message,
+                "Uninstall Claude Code",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.Yes) return;
+
+            _uninstallButton!.Enabled = false;
+            _installButton!.Enabled = false;
+            _runButton!.Enabled = false;
+
+            try
+            {
+                Log("Starting uninstallation...");
+                _statusLabel!.Text = "Uninstalling Claude Code...";
+                _progressBar!.Value = 0;
+
+                // Stop Claude Code if running (handled inside UninstallClaudeCodeAsync)
+                if (isRunning)
+                {
+                    Log("Claude Code is running. Stopping it...");
+                    _statusLabel.Text = "Stopping Claude Code...";
+                    await _installationService.StopClaudeCodeAsync();
+                    Log("✓ Claude Code stopped");
+                    await Task.Delay(1000);
+                }
+
+                bool success = await _installationService.UninstallClaudeCodeAsync();
+
+                if (success)
+                {
+                    _progressBar.Value = 100;
+                    Log("✓ Claude Code uninstalled successfully!");
+                    _statusLabel.Text = "Claude Code has been uninstalled";
+                    
+                    MessageBox.Show(
+                        "Claude Code has been successfully uninstalled from your system.",
+                        "Uninstall Complete",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    // Refresh state
+                    await LoadInitialStateAsync();
+                }
+                else
+                {
+                    throw new Exception("Uninstallation returned false");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"✗ Error uninstalling Claude Code: {ex.Message}");
+                _statusLabel.Text = "Uninstall failed";
+                MessageBox.Show(
+                    $"Failed to uninstall Claude Code:\n{ex.Message}",
+                    "Uninstall Failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Refresh installation status
+                bool isInstalled = await _installationService!.VerifyInstallationAsync();
+                _uninstallButton.Enabled = isInstalled;
+                _installButton.Enabled = true;
+                _runButton.Enabled = isInstalled;
             }
         }
 
@@ -925,6 +855,88 @@ namespace ClaudeCodeInstaller.WinForms
                 _checkUpdateButton!.Enabled = true;
                 _installButton!.Enabled = true;
                 _runButton!.Enabled = true;
+            }
+        }
+
+        private async Task InstallAdapterButton_Click()
+        {
+            if (_installationService == null) return;
+
+            // Check npm availability
+            bool npmAvailable = await _installationService.CheckNpmAvailableAsync();
+            if (!npmAvailable)
+            {
+                MessageBox.Show(
+                    "npm is required to install Claude Adapter but is not found.\n\n" +
+                    "Please install Node.js (which includes npm) from https://nodejs.org/\n\n" +
+                    "Note: Claude Code itself doesn't require npm, but plugins are installed via npm.",
+                    "npm Not Found",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Check if already installed
+            bool isInstalled = await _installationService.IsPluginInstalledAsync("claude-adapter");
+            if (isInstalled)
+            {
+                var result = MessageBox.Show(
+                    "Claude Adapter is already installed.\n\n" +
+                    "Would you like to reinstall it to get the latest version?",
+                    "Already Installed",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                
+                if (result != DialogResult.Yes) return;
+            }
+
+            try
+            {
+                Log("Installing Claude Adapter...");
+                _statusLabel!.Text = "Installing Claude Adapter...";
+                _progressBar!.Value = 0;
+
+                var progress = new Progress<int>(percentage =>
+                {
+                    _progressBar.Value = percentage;
+                    _statusLabel.Text = $"Installing Claude Adapter... {percentage}%";
+                });
+
+                bool success = await _installationService.InstallPluginAsync("claude-adapter", progress);
+
+                if (success)
+                {
+                    _progressBar.Value = 100;
+                    Log("✓ Claude Adapter installed successfully!");
+                    _statusLabel.Text = "Claude Adapter installed";
+                    
+                    MessageBox.Show(
+                        "Claude Adapter has been installed successfully!\n\n" +
+                        "Claude Adapter transforms your OpenAI API into an Anthropic-compatible endpoint for Claude Code.\n\n" +
+                        "To use it, run: claude-adapter\n\n" +
+                        "For more information, visit: https://github.com/shantoislamdev/claude-adapter",
+                        "Installation Complete",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    throw new Exception("Installation returned false");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"✗ Error installing Claude Adapter: {ex.Message}");
+                _statusLabel.Text = "Installation failed";
+                MessageBox.Show(
+                    $"Failed to install Claude Adapter:\n{ex.Message}",
+                    "Installation Failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _progressBar!.Value = 0;
             }
         }
 

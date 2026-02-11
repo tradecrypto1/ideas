@@ -46,8 +46,113 @@ namespace ClaudeCodeInstaller.Core
             return "native-install";
         }
 
+        public async Task<bool> IsClaudeCodeRunningAsync()
+        {
+            try
+            {
+                var processes = Process.GetProcessesByName("claude");
+                return processes.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> StopClaudeCodeAsync()
+        {
+            try
+            {
+                var processes = Process.GetProcessesByName("claude");
+                bool stopped = false;
+
+                foreach (var process in processes)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                            {
+                                try
+                                {
+                                    await process.WaitForExitAsync(cts.Token);
+                                }
+                                catch (System.Threading.Tasks.TaskCanceledException)
+                                {
+                                    // Process didn't exit in time, but we killed it
+                                }
+                            }
+                            stopped = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to stop Claude Code process (PID {process.Id}): {ex.Message}");
+                    }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                }
+
+                // Also check for claude-code process (legacy npm install)
+                var legacyProcesses = Process.GetProcessesByName("claude-code");
+                foreach (var process in legacyProcesses)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                            {
+                                try
+                                {
+                                    await process.WaitForExitAsync(cts.Token);
+                                }
+                                catch (System.Threading.Tasks.TaskCanceledException)
+                                {
+                                    // Process didn't exit in time, but we killed it
+                                }
+                            }
+                            stopped = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to stop Claude Code process (PID {process.Id}): {ex.Message}");
+                    }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                }
+
+                if (stopped)
+                {
+                    await Task.Delay(1000); // Give system time to release resources
+                }
+
+                return stopped;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to stop Claude Code: {ex.Message}");
+            }
+        }
+
         public async Task InstallClaudeCodeAsync(string installerPath)
         {
+            // Check if Claude Code is running and stop it
+            bool wasRunning = await IsClaudeCodeRunningAsync();
+            if (wasRunning)
+            {
+                await StopClaudeCodeAsync();
+                await Task.Delay(1000); // Wait for processes to fully terminate
+            }
+
             // Install Claude Code using native installer script
             // Uses PowerShell to download and run the installer script
             var startInfo = new ProcessStartInfo
@@ -76,7 +181,28 @@ namespace ClaudeCodeInstaller.Core
                         throw new Exception($"Native installer failed with code {process.ExitCode}. Error: {error}");
                     }
 
-                    await Task.Delay(2000); // Wait for PATH to update
+                    // Wait longer for installation to complete and PATH to update
+                    await Task.Delay(3000);
+                    
+                    // Try to manually add Claude Code to PATH for current process
+                    // The native installer should have added it to user PATH, but current process won't see it
+                    try
+                    {
+                        string localBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
+                        if (Directory.Exists(localBin))
+                        {
+                            var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
+                            if (!string.IsNullOrEmpty(currentPath) && !currentPath.Contains(localBin))
+                            {
+                                // Add to process PATH so we can use it immediately
+                                Environment.SetEnvironmentVariable("PATH", currentPath + Path.PathSeparator + localBin, EnvironmentVariableTarget.Process);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore - PATH refresh is best effort
+                    }
                 }
                 else
                 {
@@ -87,8 +213,47 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task<bool> VerifyInstallationAsync()
         {
-            // Try multiple verification methods
-            for (int i = 0; i < 5; i++)
+            // First check if files exist directly (faster and more reliable)
+            string localBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
+            string claudeExe = Path.Combine(localBin, "claude.exe");
+            
+            if (File.Exists(claudeExe))
+            {
+                // File exists, but verify it's executable by checking version
+                try
+                {
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = claudeExe,
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = WorkingDirectory
+                    };
+
+                    using (var process = Process.Start(startInfo))
+                    {
+                        if (process != null)
+                        {
+                            await process.WaitForExitAsync();
+                            if (process.ExitCode == 0)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // If direct execution fails, file might exist but PATH not updated yet
+                    // Continue to PATH-based checks
+                }
+            }
+
+            // Try multiple verification methods via PATH (with longer delays for PATH refresh)
+            for (int i = 0; i < 8; i++)
             {
                 // Method 1: Check if claude command is available (native installer)
                 if (await CheckCommandAsync("claude --version"))
@@ -102,13 +267,128 @@ namespace ClaudeCodeInstaller.Core
                     return true;
                 }
 
-                if (i < 4)
+                if (i < 7)
                 {
-                    await Task.Delay(2000);
+                    // Longer delay for PATH to update (Windows can be slow)
+                    await Task.Delay(3000);
                 }
             }
 
-            return false;
+            // Final check: if file exists, consider it installed even if PATH isn't updated
+            return File.Exists(claudeExe);
+        }
+
+        public async Task<bool> UninstallClaudeCodeAsync()
+        {
+            try
+            {
+                // Check if Claude Code is running and stop it
+                bool wasRunning = await IsClaudeCodeRunningAsync();
+                if (wasRunning)
+                {
+                    await StopClaudeCodeAsync();
+                    await Task.Delay(1000); // Wait for processes to fully terminate
+                }
+
+                // Remove native installer files (Windows)
+                string localBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
+                string claudeExe = Path.Combine(localBin, "claude.exe");
+                string claudeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "claude");
+
+                bool removed = false;
+
+                // Remove executable
+                if (File.Exists(claudeExe))
+                {
+                    try
+                    {
+                        File.Delete(claudeExe);
+                        removed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to remove Claude Code executable: {ex.Message}");
+                    }
+                }
+
+                // Remove share directory
+                if (Directory.Exists(claudeDir))
+                {
+                    try
+                    {
+                        Directory.Delete(claudeDir, true);
+                        removed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to remove Claude Code directory: {ex.Message}");
+                    }
+                }
+
+                // Also check for legacy npm installation
+                string? legacyPath = await FindClaudeCodePathAsync();
+                if (!string.IsNullOrEmpty(legacyPath) && File.Exists(legacyPath))
+                {
+                    try
+                    {
+                        // Try to uninstall via npm
+                        var startInfo = new ProcessStartInfo
+                        {
+                            FileName = "cmd.exe",
+                            Arguments = "/c npm uninstall -g @anthropic-ai/claude-code",
+                            UseShellExecute = false,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            CreateNoWindow = true,
+                            WorkingDirectory = WorkingDirectory
+                        };
+
+                        using (var process = Process.Start(startInfo))
+                        {
+                            if (process != null)
+                            {
+                                await process.StandardOutput.ReadToEndAsync();
+                                var error = await process.StandardError.ReadToEndAsync();
+                                await process.WaitForExitAsync();
+                                
+                                if (process.ExitCode == 0)
+                                {
+                                    removed = true;
+                                }
+                                else if (!string.IsNullOrEmpty(error) && !error.Contains("not found"))
+                                {
+                                    throw new Exception($"npm uninstall failed: {error}");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // If npm uninstall fails, try to remove files directly
+                        try
+                        {
+                            File.Delete(legacyPath);
+                            removed = true;
+                        }
+                        catch
+                        {
+                            throw new Exception($"Failed to remove legacy installation: {ex.Message}");
+                        }
+                    }
+                }
+
+                if (!removed)
+                {
+                    throw new Exception("Claude Code installation not found or already removed");
+                }
+
+                await Task.Delay(1000); // Give system time to update PATH
+                return true;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to uninstall Claude Code: {ex.Message}");
+            }
         }
 
         private async Task<bool> CheckNpmGlobalPackageAsync()
@@ -254,17 +534,39 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task RunClaudeCodeAsync(string? arguments = null)
         {
-            // Use native claude command (from native installer)
-            // Fallback to claude-code for legacy npm installations
-            var startInfo = new ProcessStartInfo
+            // First try to find the direct path to claude.exe
+            string localBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
+            string claudeExe = Path.Combine(localBin, "claude.exe");
+            
+            ProcessStartInfo startInfo;
+            
+            if (File.Exists(claudeExe))
             {
-                FileName = "cmd.exe",
-                Arguments = $"/k claude {arguments ?? ""}",
-                UseShellExecute = true,
-                CreateNoWindow = false,
-                WindowStyle = ProcessWindowStyle.Normal,
-                WorkingDirectory = WorkingDirectory
-            };
+                // Use direct path - more reliable than PATH
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = claudeExe,
+                    Arguments = arguments ?? "",
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal,
+                    WorkingDirectory = WorkingDirectory
+                };
+            }
+            else
+            {
+                // Fallback: try via PATH (might work if PATH was updated)
+                // Also try legacy npm installation
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/k claude {arguments ?? ""}",
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal,
+                    WorkingDirectory = WorkingDirectory
+                };
+            }
 
             var process = Process.Start(startInfo);
             if (process != null)
@@ -278,6 +580,10 @@ namespace ClaudeCodeInstaller.Core
                 {
                     // Ignore errors
                 }
+            }
+            else
+            {
+                throw new Exception($"Failed to start Claude Code. Please ensure it is installed and try restarting the application.");
             }
         }
 
@@ -625,31 +931,9 @@ namespace ClaudeCodeInstaller.Core
             return ("Unknown", "");
         }
 
-        public async Task<List<PluginInfo>> GetAvailablePluginsAsync()
+        public async Task<bool> CheckNpmAvailableAsync()
         {
-            var plugins = new List<PluginInfo>
-            {
-                new PluginInfo
-                {
-                    Name = "Claude Adapter",
-                    PackageName = "claude-adapter",
-                    Description = "Transform your OpenAI API into an Anthropic-compatible endpoint for Claude Code. Allows using OpenAI-compatible models (DeepSeek, GPT-Codex, Grok) with Claude Code.",
-                    GitHubUrl = "https://github.com/shantoislamdev/claude-adapter",
-                    Version = "latest"
-                }
-            };
-
-            // Check which plugins are installed
-            foreach (var plugin in plugins)
-            {
-                plugin.IsInstalled = await IsPluginInstalledAsync(plugin.PackageName);
-                if (plugin.IsInstalled)
-                {
-                    plugin.InstalledVersion = await GetPluginVersionAsync(plugin.PackageName) ?? "installed";
-                }
-            }
-
-            return plugins;
+            return await CheckCommandAsync("npm --version");
         }
 
         public async Task<bool> IsPluginInstalledAsync(string packageName)
@@ -685,57 +969,14 @@ namespace ClaudeCodeInstaller.Core
             return false;
         }
 
-        public async Task<string?> GetPluginVersionAsync(string packageName)
-        {
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c npm list -g {packageName} --depth=0",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = WorkingDirectory
-                };
-
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process != null)
-                    {
-                        var output = await process.StandardOutput.ReadToEndAsync();
-                        await process.WaitForExitAsync();
-                        
-                        if (process.ExitCode == 0 && output.Contains(packageName))
-                        {
-                            // Try to extract version from output (format: package@version)
-                            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            foreach (var line in lines)
-                            {
-                                if (line.Contains(packageName) && line.Contains("@"))
-                                {
-                                    var parts = line.Split('@');
-                                    if (parts.Length > 1)
-                                    {
-                                        return parts[parts.Length - 1].Trim();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore errors
-            }
-
-            return null;
-        }
-
         public async Task<bool> InstallPluginAsync(string packageName, IProgress<int>? progress = null)
         {
+            // Check if npm is available
+            if (!await CheckNpmAvailableAsync())
+            {
+                throw new Exception("npm is required to install plugins but is not found. Please install Node.js (which includes npm) from https://nodejs.org/");
+            }
+
             try
             {
                 progress?.Report(0);
@@ -784,6 +1025,12 @@ namespace ClaudeCodeInstaller.Core
 
         public async Task<bool> UninstallPluginAsync(string packageName)
         {
+            // Check if npm is available
+            if (!await CheckNpmAvailableAsync())
+            {
+                throw new Exception("npm is required to uninstall plugins but is not found. Please install Node.js (which includes npm) from https://nodejs.org/");
+            }
+
             try
             {
                 var startInfo = new ProcessStartInfo
@@ -809,9 +1056,9 @@ namespace ClaudeCodeInstaller.Core
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore errors
+                throw new Exception($"Failed to uninstall plugin: {ex.Message}");
             }
 
             return false;
