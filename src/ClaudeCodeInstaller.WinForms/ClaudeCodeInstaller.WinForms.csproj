@@ -7,10 +7,14 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
     <Authors>Claude Code Installer Contributors</Authors>
+    <Product>Claude Code Installer &amp; Runner</Product>
     <Description>WinForms installer and runner for Claude Code on Windows 11</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/your-org/ideas</PackageProjectUrl>
+    <Copyright>Copyright (c) 2025 Claude Code Installer Contributors. MIT License.</Copyright>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

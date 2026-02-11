@@ -66,6 +66,12 @@ dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csp
 | **Run Claude Adapter** | Runs `claude-adapter` in a new console. |
 | **Health Check** | Reports Claude Code install status, paths, OS. |
 
+## VirusTotal / antivirus false positives
+
+Some vendors may flag the built exe (e.g. Win64:Malware-gen, Trojan.Win64.Agent). These are **false positives** common for new, single-file .NET apps. The project is open source (MIT); you can build from source with `.\build.ps1 -Publish`. See [docs/VIRUSTOTAL_FALSE_POSITIVES.md](docs/VIRUSTOTAL_FALSE_POSITIVES.md) for details.
+
+**Code signing** the exe (Authenticode) reduces false positives and shows "Verified publisher." See [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md) for how to sign with a certificate; the build script can sign automatically when env vars are set.
+
 ## Troubleshooting
 
 | Issue | What to do |

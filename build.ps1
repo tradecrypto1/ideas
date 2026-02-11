@@ -2,6 +2,11 @@
 # Usage: .\build.ps1 [-Publish] [-SkipTests]
 #   -Publish    Also publish WinForms app to artifacts\winforms
 #   -SkipTests  Skip running tests after build
+#
+# Optional code signing (when -Publish): set env vars before running:
+#   CLAUDE_INSTALLER_SIGN_PFX      Path to .pfx file
+#   CLAUDE_INSTALLER_SIGN_PASSWORD PFX password
+# See docs/CODE_SIGNING.md for details.
 
 param(
     [switch]$Publish,
@@ -60,6 +65,27 @@ if ($Publish) {
         --output $winformsOut
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "  Published to $winformsOut" -ForegroundColor Green
+
+    # Optional: Authenticode sign the exe (reduces AV false positives)
+    $signPfx = $env:CLAUDE_INSTALLER_SIGN_PFX
+    $signPassword = $env:CLAUDE_INSTALLER_SIGN_PASSWORD
+    $exePath = Join-Path $winformsOut "ClaudeCodeInstaller.WinForms.exe"
+    if ($signPfx -and $signPassword -and (Test-Path $exePath)) {
+        $signtool = $null
+        $sdkRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+        if (Test-Path $sdkRoot) {
+            $signtool = Get-ChildItem -Path $sdkRoot -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "x64" } | Select-Object -First 1
+        }
+        if (-not $signtool) { $signtool = Get-Command signtool -ErrorAction SilentlyContinue }
+        if ($signtool) {
+            Write-Host "Signing executable (Authenticode)..." -ForegroundColor Yellow
+            $signtoolPath = if ($null -ne $signtool.FullName) { $signtool.FullName } elseif ($signtool.Source) { $signtool.Source } else { $signtool.Path }
+            & $signtoolPath sign /f $signPfx /p $signPassword /tr "http://timestamp.digicert.com" /td sha256 /fd sha256 $exePath
+            if ($LASTEXITCODE -eq 0) { Write-Host "  Signed." -ForegroundColor Green } else { Write-Host "  Signing failed (exit $LASTEXITCODE)." -ForegroundColor Red }
+        } else {
+            Write-Host "  signtool not found; skipping signing. Install Windows SDK or set PATH." -ForegroundColor Gray
+        }
+    }
 }
 
 Write-Host ""
