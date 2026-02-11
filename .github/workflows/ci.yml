@@ -413,18 +413,18 @@ jobs:
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         $previousTag = ""
-        # Try to get the latest tag (not necessarily on HEAD^)
+        # Try to get the latest tag (not necessarily on HEAD^). git describe exits 128 when no tags exist.
         $result = git describe --tags --abbrev=0 2>&1
         if ($LASTEXITCODE -eq 0 -and $result) {
           $previousTag = $result.Trim()
           Write-Host "Found latest tag: $previousTag"
         } else {
-          # If no tags exist at all, that's fine - this is the first release
           Write-Host "No previous tags found (this may be the first release)"
           $previousTag = ""
         }
         Write-Host "Previous tag: $previousTag"
         echo "tag=$previousTag" >> $env:GITHUB_OUTPUT
+        exit 0
 
     - name: Generate changelog
       id: changelog

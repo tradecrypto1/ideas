@@ -18,6 +18,7 @@ namespace ClaudeCodeInstaller.WinForms
         private Button? _installButton;
         private Button? _uninstallButton;
         private Button? _runButton;
+        private Button? _runAdapterButton;
         private Button? _checkUpdateButton;
         private ProgressBar? _progressBar;
         private Label? _statusLabel;
@@ -48,6 +49,8 @@ namespace ClaudeCodeInstaller.WinForms
             _workingDirectory = LoadWorkingDirectory();
             
             InitializeComponent();
+            InitializeMainTab();
+            InitializeAdvancedTab();
             _installationService = new InstallationService(workingDirectory: _workingDirectory);
             _healthCheckService = new HealthCheckService(_installationService);
             _installerUpdateService = new InstallerUpdateService();
@@ -55,35 +58,54 @@ namespace ClaudeCodeInstaller.WinForms
 
         private void InitializeComponent()
         {
-            this.Text = "Claude Code Installer & Runner";
-            this.Size = new Size(800, 700);
-            this.MinimumSize = new Size(750, 600);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MaximizeBox = true;
-            this.MinimizeBox = true;
+            _tabControl = new TabControl();
+            _mainTab = new TabPage();
+            _advancedTab = new TabPage();
+            _tabControl.SuspendLayout();
+            SuspendLayout();
+            // 
+            // _tabControl
+            // 
+            _tabControl.Controls.Add(_mainTab);
+            _tabControl.Controls.Add(_advancedTab);
+            _tabControl.Dock = DockStyle.Fill;
+            _tabControl.Location = new Point(0, 0);
+            _tabControl.Name = "_tabControl";
+            _tabControl.SelectedIndex = 0;
+            _tabControl.Size = new Size(784, 661);
+            _tabControl.TabIndex = 0;
+            // 
+            // _mainTab
+            // 
+            _mainTab.Location = new Point(4, 24);
+            _mainTab.Name = "_mainTab";
+            _mainTab.Size = new Size(776, 633);
+            _mainTab.TabIndex = 0;
+            _mainTab.Text = "Main";
+            // 
+            // _advancedTab
+            // 
+            _advancedTab.Location = new Point(4, 24);
+            _advancedTab.Name = "_advancedTab";
+            _advancedTab.Size = new Size(776, 633);
+            _advancedTab.TabIndex = 1;
+            _advancedTab.Text = "Advanced";
+            // 
+            // MainForm
+            // 
+            ClientSize = new Size(784, 661);
+            Controls.Add(_tabControl);
+            MinimumSize = new Size(750, 600);
+            Name = "MainForm";
+            StartPosition = FormStartPosition.CenterScreen;
+            Text = "Claude Code Installer & Runner";
+            Load += MainForm_Load;
+            _tabControl.ResumeLayout(false);
+            ResumeLayout(false);
+        }
 
-            // Create TabControl
-            _tabControl = new TabControl
-            {
-                Location = new Point(10, 10),
-                Size = new Size(780, 650),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
-            };
-
-            // Main Tab
-            _mainTab = new TabPage("Main");
-            InitializeMainTab();
-            _tabControl.TabPages.Add(_mainTab);
-
-            // Advanced Tab
-            _advancedTab = new TabPage("Advanced");
-            InitializeAdvancedTab();
-            _tabControl.TabPages.Add(_advancedTab);
-
-            this.Controls.Add(_tabControl);
-
-            // Load initial state
+        private void MainForm_Load(object? sender, EventArgs e)
+        {
             _ = LoadInitialStateAsync();
             _ = CheckInstallerUpdateAsync();
         }
@@ -189,20 +211,6 @@ namespace ClaudeCodeInstaller.WinForms
             _checkUpdateButton.Click += CheckUpdateButton_Click;
             _mainTab.Controls.Add(_checkUpdateButton);
 
-            // Uninstall button
-            _uninstallButton = new Button
-            {
-                Text = "Uninstall Claude Code",
-                Location = new Point(190, 480),
-                Size = new Size(150, 35),
-                Font = new Font("Segoe UI", 9),
-                BackColor = Color.FromArgb(220, 53, 69),
-                ForeColor = Color.White,
-                Enabled = false
-            };
-            _uninstallButton.Click += UninstallButton_Click;
-            _mainTab.Controls.Add(_uninstallButton);
-
             // Install Claude Adapter button
             var installAdapterButton = new Button
             {
@@ -216,12 +224,40 @@ namespace ClaudeCodeInstaller.WinForms
             installAdapterButton.Click += async (s, e) => await InstallAdapterButton_Click();
             _mainTab.Controls.Add(installAdapterButton);
 
+            // Uninstall button
+            _uninstallButton = new Button
+            {
+                Text = "Uninstall Claude Code",
+                Location = new Point(210, 480),
+                Size = new Size(150, 35),
+                Font = new Font("Segoe UI", 9),
+                BackColor = Color.FromArgb(220, 53, 69),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            _uninstallButton.Click += UninstallButton_Click;
+            _mainTab.Controls.Add(_uninstallButton);
+
+            // Run Claude Adapter button
+            _runAdapterButton = new Button
+            {
+                Text = "Run Claude Adapter",
+                Location = new Point(370, 480),
+                Size = new Size(160, 35),
+                Font = new Font("Segoe UI", 9),
+                BackColor = Color.FromArgb(40, 167, 69),
+                ForeColor = Color.White,
+                Enabled = false
+            };
+            _runAdapterButton.Click += RunAdapterButton_Click;
+            _mainTab.Controls.Add(_runAdapterButton);
+
             // Health check button
             var healthCheckButton = new Button
             {
                 Text = "Health Check",
-                Location = new Point(210, 480),
-                Size = new Size(150, 35),
+                Location = new Point(540, 480),
+                Size = new Size(130, 35),
                 Font = new Font("Segoe UI", 9)
             };
             healthCheckButton.Click += HealthCheckButton_Click;
@@ -455,9 +491,11 @@ namespace ClaudeCodeInstaller.WinForms
             Log("Checking installation status...");
             bool isInstalled = await _installationService!.VerifyInstallationAsync();
             bool isRunning = await _installationService.IsClaudeCodeRunningAsync();
+            bool adapterInstalled = await _installationService.IsPluginInstalledAsync("claude-adapter");
             
             _runButton!.Enabled = isInstalled;
             _uninstallButton!.Enabled = isInstalled;
+            _runAdapterButton!.Enabled = adapterInstalled;
             
             if (isInstalled)
             {
@@ -722,6 +760,24 @@ namespace ClaudeCodeInstaller.WinForms
             }
         }
 
+        private async void RunAdapterButton_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                Log("Starting Claude Adapter...");
+                _statusLabel!.Text = "Running Claude Adapter...";
+                await _installationService!.RunClaudeAdapterAsync();
+                Log("✓ Claude Adapter started");
+                _statusLabel.Text = "Claude Adapter is running";
+            }
+            catch (Exception ex)
+            {
+                Log($"✗ Error running Claude Adapter: {ex.Message}");
+                MessageBox.Show($"Failed to run Claude Adapter: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private async void CheckUpdateButton_Click(object? sender, EventArgs e)
         {
             _checkUpdateButton!.Enabled = false;
@@ -909,6 +965,7 @@ namespace ClaudeCodeInstaller.WinForms
                     _progressBar.Value = 100;
                     Log("✓ Claude Adapter installed successfully!");
                     _statusLabel.Text = "Claude Adapter installed";
+                    _runAdapterButton!.Enabled = true;
                     
                     MessageBox.Show(
                         "Claude Adapter has been installed successfully!\n\n" +

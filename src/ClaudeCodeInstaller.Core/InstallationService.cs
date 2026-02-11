@@ -587,6 +587,37 @@ namespace ClaudeCodeInstaller.Core
             }
         }
 
+        public async Task RunClaudeAdapterAsync(string? arguments = null)
+        {
+            // Run claude-adapter via cmd so npm global bin is on PATH
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/k claude-adapter {arguments ?? ""}",
+                UseShellExecute = true,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Normal,
+                WorkingDirectory = WorkingDirectory
+            };
+
+            var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                try
+                {
+                    await Task.Delay(500);
+                }
+                catch
+                {
+                    // Ignore
+                }
+            }
+            else
+            {
+                throw new Exception("Failed to start Claude Adapter. Ensure it is installed (Install Claude Adapter button) and Node.js/npm are on PATH.");
+            }
+        }
+
         private async Task<string?> FindClaudeCodePathAsync()
         {
             try

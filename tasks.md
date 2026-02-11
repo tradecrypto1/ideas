@@ -9,3 +9,5 @@
 - [x] each time there is a check in create and RC version tag it build it and upload to github ACR
 - [x] build a winforms applicaton to download and isntall claude code.  the installer will check to see if there is a newer version out there.  if there is uninstall curent and install newer version.
 - [x] the installer is also a runner it will run claude code for the user not need to do stupid stuff to get it running
+
+cd C:\files\repos15\Projects\ideas && powershell -ExecutionPolicy Bypass -File .\build.ps1 -Publish
