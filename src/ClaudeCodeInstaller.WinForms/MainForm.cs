@@ -918,18 +918,49 @@ namespace ClaudeCodeInstaller.WinForms
         {
             if (_installationService == null) return;
 
-            // Check npm availability
+            // Check npm availability; if missing, offer to install Node.js
             bool npmAvailable = await _installationService.CheckNpmAvailableAsync();
             if (!npmAvailable)
             {
-                MessageBox.Show(
-                    "npm is required to install Claude Adapter but is not found.\n\n" +
-                    "Please install Node.js (which includes npm) from https://nodejs.org/\n\n" +
-                    "Note: Claude Code itself doesn't require npm, but plugins are installed via npm.",
-                    "npm Not Found",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
+                var installNode = MessageBox.Show(
+                    "Node.js (which includes npm) is required to install Claude Adapter but is not installed.\n\n" +
+                    "Would you like to install Node.js LTS now?",
+                    "Install Node.js",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (installNode != DialogResult.Yes) return;
+
+                try
+                {
+                    Log("Installing Node.js LTS...");
+                    _statusLabel!.Text = "Installing Node.js...";
+                    _progressBar!.Value = 0;
+                    var progress = new Progress<int>(p =>
+                    {
+                        _progressBar.Value = p;
+                        _statusLabel.Text = $"Installing Node.js... {p}%";
+                    });
+                    await _installationService.InstallNodeJsAsync(progress, Log);
+                    _progressBar.Value = 100;
+                    _statusLabel.Text = "Node.js install finished";
+                    // PATH may not be updated in this process; recheck
+                    npmAvailable = await _installationService.CheckNpmAvailableAsync();
+                    if (!npmAvailable)
+                    {
+                        MessageBox.Show(
+                            "Node.js was installed. Please restart this app and try again so npm is detected.",
+                            "Restart Required",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"✗ Node.js install failed: {ex.Message}");
+                    MessageBox.Show($"Failed to install Node.js: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
             }
 
             // Check if already installed

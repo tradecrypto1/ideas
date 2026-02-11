@@ -967,6 +967,110 @@ namespace ClaudeCodeInstaller.Core
             return await CheckCommandAsync("npm --version");
         }
 
+        /// <summary>
+        /// Install Node.js (LTS) so npm is available. Tries winget first, then MSI download.
+        /// Caller may need to restart the app or retry after install for PATH to be visible.
+        /// </summary>
+        public async Task<bool> InstallNodeJsAsync(IProgress<int>? progress = null, Action<string>? log = null)
+        {
+            progress?.Report(0);
+            log?.Invoke("Checking for Node.js installer (winget)...");
+
+            // 1. Try winget
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "winget",
+                    Arguments = "install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process != null)
+                    {
+                        var outTask = process.StandardOutput.ReadToEndAsync();
+                        var errTask = process.StandardError.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+                        var output = await outTask;
+                        var err = await errTask;
+                        log?.Invoke(output);
+                        if (err?.Length > 0) log?.Invoke(err);
+                        progress?.Report(100);
+                        if (process.ExitCode == 0)
+                        {
+                            log?.Invoke("Node.js installed via winget. You may need to restart this app for npm to be available.");
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"Winget not available or failed: {ex.Message}");
+            }
+
+            progress?.Report(30);
+            log?.Invoke("Falling back to Node.js LTS MSI download...");
+
+            // 2. Fallback: download LTS MSI and run
+            try
+            {
+                const string nodeLtsVersion = "20.18.0";
+                string msiUrl = $"https://nodejs.org/dist/v{nodeLtsVersion}/node-v{nodeLtsVersion}-x64.msi";
+                string tempDir = Path.Combine(Path.GetTempPath(), "ClaudeCodeInstaller");
+                Directory.CreateDirectory(tempDir);
+                string msiPath = Path.Combine(tempDir, $"node-v{nodeLtsVersion}-x64.msi");
+
+                using (var response = await _httpClient.GetAsync(msiUrl, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    response.EnsureSuccessStatusCode();
+                    long? total = response.Content.Headers.ContentLength;
+                    await using (var stream = await response.Content.ReadAsStreamAsync())
+                    await using (var file = File.Create(msiPath))
+                    {
+                        var buffer = new byte[81920];
+                        long totalRead = 0;
+                        int read;
+                        while ((read = await stream.ReadAsync(buffer)) > 0)
+                        {
+                            await file.WriteAsync(buffer.AsMemory(0, read));
+                            totalRead += read;
+                            if (total.HasValue && total.Value > 0)
+                                progress?.Report(30 + (int)(40 * totalRead / total.Value));
+                        }
+                    }
+                }
+
+                progress?.Report(75);
+                log?.Invoke("Running Node.js installer (this may open a window)...");
+                var msiInfo = new ProcessStartInfo
+                {
+                    FileName = "msiexec.exe",
+                    Arguments = $"/i \"{msiPath}\" /quiet",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using (var process = Process.Start(msiInfo))
+                {
+                    if (process != null)
+                        await process.WaitForExitAsync();
+                }
+                try { File.Delete(msiPath); } catch { }
+                progress?.Report(100);
+                log?.Invoke("Node.js MSI install completed. You may need to restart this app for npm to be available.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"Node.js install failed: {ex.Message}");
+                throw new Exception($"Could not install Node.js: {ex.Message}. Please install manually from https://nodejs.org/");
+            }
+        }
+
         public async Task<bool> IsPluginInstalledAsync(string packageName)
         {
             try
