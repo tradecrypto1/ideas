@@ -87,6 +87,10 @@ dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csp
 
 GitHub Actions (`.github/workflows/ci.yml`): build, test, security checks, publish WinForms artifact, virus scan; on push to `main`, RC tag and GitHub Release with changelog.
 
-## License / attribution
+## License
 
-This installer is provided as-is. Claude Code is by Anthropic; Claude Adapter by its respective authors.
+This application is free for anyone to use, modify, and distribute under the **MIT License**. See [LICENSE](LICENSE) in the repo root.
+
+Third-party components (e.g. Newtonsoft.Json, test libraries) have their own licenses; see [docs/THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md) for details.
+
+Claude Code is by Anthropic; Claude Adapter by its respective authors. This installer is not affiliated with or endorsed by Anthropic.
