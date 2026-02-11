@@ -1,173 +1,92 @@
-# Claude Code Easy Installer for Windows 11
+# Claude Code Installer & Runner (Windows)
 
-**The simplest way to install Claude Code on Windows 11!** 🚀
+WinForms app to install, run, and manage **Claude Code** (official native installer) and **Claude Adapter** (npm) on Windows 10/11.
 
-This automated installer handles everything for you:
-- ✅ Checks for required prerequisites (Node.js)
-- ✅ Downloads the latest Claude Code installer
-- ✅ Installs Claude Code automatically
-- ✅ Verifies the installation
-- ✅ Provides clear next steps
+## Features
+
+- **Claude Code** (no Node.js required)
+  - Install/update via official script: `irm https://claude.ai/install.ps1 | iex`
+  - Run Claude Code from the app
+  - Uninstall (stops processes, removes `%USERPROFILE%\.local\bin\claude` and related files)
+  - Check for installer updates
+- **Claude Adapter**
+  - Install/run **Claude Adapter** via npm; if Node.js is missing, the app can install Node.js LTS for you (winget or MSI fallback)
+- **Advanced** tab: working directory, paths
+- **Health Check**: installation status, prerequisites, OS
 
 ## Prerequisites
 
-Before running the installer, you need:
+- **Windows 10/11**
+- **.NET 8.0** Runtime or SDK — [Download](https://dotnet.microsoft.com/download/dotnet/8.0)  
+  - Runtime: to run the pre-built app  
+  - SDK: to build from source  
+- **Node.js** is only required for Claude Adapter; the app can install it if missing.
 
-1. **Windows 11** (or Windows 10 with recent updates)
-2. **.NET 8.0 Runtime or SDK** - [Download here](https://dotnet.microsoft.com/download/dotnet/8.0)
-   - If you just want to run the installer: Download .NET 8.0 Runtime
-   - If you want to build from source: Download .NET 8.0 SDK
+## Quick start (pre-built)
 
-## Quick Start (Using Pre-Built Executable)
+1. Get `ClaudeCodeInstaller.WinForms.exe` (e.g. from [Releases](https://github.com/your-org/ideas/releases) or build with `.\build.ps1 -Publish`).
+2. Run the exe.
+3. Use **Install/Update Claude Code** or **Install Claude Adapter** as needed, then **Run** from the app.
 
-### Option A: Run Pre-Built Installer (Easiest)
+## Build from source
 
-If someone has already built the executable for you:
+### Full rebuild (recommended)
 
-1. Download `ClaudeCodeInstaller.exe`
-2. Double-click to run
-3. Follow the on-screen instructions
-4. That's it! 🎉
-
-## Building from Source
-
-### Step 1: Install .NET SDK
-
-1. Download and install [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-2. Verify installation by opening PowerShell and running:
-   ```powershell
-   dotnet --version
-   ```
-
-### Step 2: Build the Installer
-
-1. Open PowerShell or Command Prompt
-2. Navigate to the folder containing these files:
-   ```powershell
-   cd C:\path\to\ClaudeCodeInstaller
-   ```
-
-3. Build the project:
-   ```powershell
-   dotnet build --configuration Release
-   ```
-
-4. The executable will be in: `bin\Release\net8.0\ClaudeCodeInstaller.exe`
-
-### Step 3: Run the Installer
-
-Run the built executable:
 ```powershell
-.\bin\Release\net8.0\ClaudeCodeInstaller.exe
+.\build.ps1
 ```
 
-Or for a single-file executable (recommended for distribution):
+- Clean, restore, build (Release), run tests.  
+- **Skip tests:** `.\build.ps1 -SkipTests`  
+- **Publish WinForms to `artifacts\winforms`:** `.\build.ps1 -Publish`
+
+### Manual build
+
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+dotnet restore
+dotnet build --configuration Release
 ```
 
-The single-file executable will be in: `bin\Release\net8.0\win-x64\publish\ClaudeCodeInstaller.exe`
+Run: `src\ClaudeCodeInstaller.WinForms\bin\Release\net8.0-windows\win-x64\ClaudeCodeInstaller.WinForms.exe`
 
-## What the Installer Does
+### Single-file publish (distribution)
 
-1. **Checks Prerequisites**
-   - Verifies Node.js is installed (required for Claude Code)
-   - Checks for Git (optional but recommended)
-   - Opens download pages if anything is missing
+```powershell
+dotnet publish src/ClaudeCodeInstaller.WinForms/ClaudeCodeInstaller.WinForms.csproj -c Release -r win-x64 --self-contained true -o artifacts/winforms
+```
 
-2. **Downloads Claude Code**
-   - Fetches the latest Windows installer from Anthropic
-   - Shows download progress
-   - Saves to a temporary location
+## What the app does
 
-3. **Installs Claude Code**
-   - Runs the installer silently
-   - Handles administrator elevation if needed
-   - Cleans up temporary files
-
-4. **Verifies Installation**
-   - Confirms the `claude-code` command is available
-   - Provides troubleshooting tips if needed
-
-## After Installation
-
-Once installation is complete:
-
-1. **Open a new terminal** (Command Prompt, PowerShell, or Windows Terminal)
-2. Run:
-   ```powershell
-   claude-code
-   ```
-3. Follow the authentication prompts to link your Anthropic account
-4. Start using Claude Code!
+| Action | Description |
+|--------|-------------|
+| **Install/Update Claude Code** | Runs official PowerShell installer; installs to `%USERPROFILE%\.local\bin\claude.exe`. Stops any running Claude Code first. |
+| **Run Claude Code** | Launches `claude` (by path if needed so it works before PATH is updated). |
+| **Uninstall Claude Code** | Stops `claude`/`claude-code` processes, removes install dir and exe. |
+| **Install Claude Adapter** | Global npm install of `claude-adapter`. If Node.js is missing, offers to install Node.js LTS (winget → MSI fallback). |
+| **Run Claude Adapter** | Runs `claude-adapter` in a new console. |
+| **Health Check** | Reports Claude Code install status, paths, OS. |
 
 ## Troubleshooting
 
-### "Node.js not found"
-- Install Node.js from https://nodejs.org/ (v18 or later required)
-- Restart the installer after installing Node.js
+| Issue | What to do |
+|-------|------------|
+| **"claude" not recognized** | Install via the app, then open a **new** terminal, or use **Run Claude Code** in the app (uses full path). |
+| **npm not found for Claude Adapter** | Click **Install Claude Adapter**; when prompted, choose **Yes** to install Node.js LTS. Restart the app if npm still isn’t found. |
+| **Access denied** | Run the app as Administrator if install/uninstall fails. |
+| **Build: dotnet not found** | Install [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). |
 
-### "claude-code command not found" after installation
-- Close and reopen your terminal
-- The PATH environment variable needs to refresh
-- If still not working, restart your computer
+## Repo layout
 
-### "Access denied" errors
-- Right-click the installer and select "Run as Administrator"
+- `src/ClaudeCodeInstaller.Core` — install/uninstall/verify Claude Code, Node.js install, npm/Claude Adapter, health.
+- `src/ClaudeCodeInstaller.WinForms` — Main form (tabs: Main, Advanced).
+- `tests/ClaudeCodeInstaller.Tests` — unit tests.
+- `build.ps1` — full rebuild script.
+- `docs/` — per-component and project docs.
 
-### Download fails
-- Check your internet connection
-- Verify you can access: https://storage.googleapis.com
-- Try disabling VPN or proxy temporarily
+## CI/CD
 
-## What is Claude Code?
+GitHub Actions (`.github/workflows/ci.yml`): build, test, security checks, publish WinForms artifact, virus scan; on push to `main`, RC tag and GitHub Release with changelog.
 
-Claude Code is a command-line tool that lets you delegate coding tasks to Claude AI directly from your terminal. Perfect for:
-- 🔨 Building applications and scripts
-- 🐛 Debugging code
-- 📝 Writing documentation
-- 🔄 Refactoring projects
-- 🎓 Learning programming concepts
+## License / attribution
 
-## System Requirements
-
-- **OS**: Windows 11 (or Windows 10 version 1909 or later)
-- **Node.js**: v18.0.0 or later
-- **.NET**: 8.0 Runtime (only to run this installer)
-- **Disk Space**: ~200 MB for Claude Code
-- **Internet**: Required for download and Claude Code authentication
-
-## Advanced Options
-
-### Silent Build and Run
-```powershell
-# Build
-dotnet build -c Release
-
-# Run with no user interaction (auto-accepts defaults)
-.\bin\Release\net8.0\ClaudeCodeInstaller.exe
-```
-
-### Customize Download Location
-Edit the `CLAUDE_CODE_DOWNLOAD_URL` constant in `ClaudeCodeInstaller.cs` if you need to use a different source.
-
-## Security Notes
-
-- This installer downloads Claude Code from Anthropic's official CDN
-- The installer requests administrator privileges only when needed
-- All downloads are verified during installation
-- No data is collected or transmitted by this installer
-
-## Support
-
-- **Claude Code Documentation**: https://docs.claude.com
-- **Support**: https://support.claude.com
-- **Node.js Help**: https://nodejs.org/
-
-## License
-
-This installer is provided as-is for convenience. Claude Code itself is subject to Anthropic's terms of service.
-
----
-
-**Made with ❤️ to make Claude Code installation 100000% easier!**
+This installer is provided as-is. Claude Code is by Anthropic; Claude Adapter by its respective authors.

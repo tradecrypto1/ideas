@@ -1,96 +1,34 @@
-# 🚀 QUICK START GUIDE
+# Quick start
 
-## For Users (Just Want to Install Claude Code)
+## Run the app
 
-### If you have the .exe file already:
-1. Double-click `ClaudeCodeInstaller.exe`
-2. Follow the prompts
-3. Done! Open a terminal and type `claude-code`
+- **If you have the .exe:** double-click `ClaudeCodeInstaller.WinForms.exe` (or the single-file build from `artifacts\winforms`).
+- **From source:** install [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), then:
+  ```powershell
+  .\build.ps1
+  ```
+  Run: `src\ClaudeCodeInstaller.WinForms\bin\Release\net8.0-windows\win-x64\ClaudeCodeInstaller.WinForms.exe`
 
-### If you're building from source:
-1. Install .NET 8.0 SDK: https://dotnet.microsoft.com/download/dotnet/8.0
-2. Right-click `build.ps1` → Run with PowerShell
-3. Choose build option (option 2 recommended for distribution)
-4. Run the generated .exe file
+## Build options
 
----
+| Command | What it does |
+|---------|----------------|
+| `.\build.ps1` | Clean, restore, build (Release), run tests |
+| `.\build.ps1 -SkipTests` | Same but skips tests |
+| `.\build.ps1 -Publish` | Same + publish WinForms to `artifacts\winforms` (win-x64, self-contained) |
 
-## What You Need Before Installing Claude Code
+## What you need
 
-✅ **Node.js v18+** - The installer will check and help you install this
-✅ **Internet connection** - To download Claude Code
-✅ **Windows 11** (or Windows 10 with updates)
+- **Windows 10/11**
+- **.NET 8** (Runtime to run; SDK to build)
+- **Node.js** only for Claude Adapter — the app can install it for you when you click **Install Claude Adapter**
 
----
+## First-time flow
 
-## Super Simple Instructions
+1. **Claude Code:** Click **Install/Update Claude Code** → wait → use **Run Claude Code** or open a new terminal and run `claude`.
+2. **Claude Adapter:** Click **Install Claude Adapter** (install Node.js when prompted if needed) → **Run Claude Adapter** when ready.
 
-### Method 1: PowerShell Build Script (EASIEST)
-```powershell
-# Right-click build.ps1 and select "Run with PowerShell"
-# OR open PowerShell in this folder and run:
-.\build.ps1
-```
+## Troubleshooting
 
-### Method 2: Manual Build
-```powershell
-# For quick build:
-dotnet build --configuration Release
-
-# For standalone single-file (recommended):
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
-```
-
----
-
-## After Building
-
-Your installer will be in one of these locations:
-
-**Quick build:**
-- `bin\Release\net8.0\ClaudeCodeInstaller.exe`
-- Smaller file (~200 KB)
-- Requires .NET runtime on the PC where you run it
-
-**Single-file build:**
-- `bin\Release\net8.0\win-x64\publish\ClaudeCodeInstaller.exe`
-- Larger file (~70 MB)
-- Runs on any Windows 11 PC (no .NET needed)
-- **Best for sharing with others!**
-
----
-
-## Troubleshooting Build Issues
-
-**"dotnet command not found"**
-→ Install .NET 8.0 SDK from https://dotnet.microsoft.com/download/dotnet/8.0
-
-**"Cannot run scripts" error in PowerShell**
-→ Run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-
-**Build succeeds but exe won't run**
-→ You built the quick version - either install .NET Runtime or build the single-file version
-
----
-
-## What This Installer Does
-
-✨ Checks if Node.js is installed (required for Claude Code)
-✨ Downloads Claude Code from Anthropic's servers  
-✨ Installs it automatically (silent installation)
-✨ Verifies everything works
-✨ Tells you exactly what to do next
-
-**No manual configuration. No complex steps. Just works!**
-
----
-
-## Support
-
-- Claude Code docs: https://docs.claude.com
-- Need help? https://support.claude.com
-- Node.js issues? https://nodejs.org/
-
----
-
-Made with ❤️ to save you time and hassle!
+- **PowerShell script execution:** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- **npm not found after installing Node:** Restart the app so it picks up the new PATH.

@@ -1,114 +1,63 @@
 # InstallationService
 
 ## Overview
-`InstallationService` is the core service class responsible for downloading, installing, and managing Claude Code on Windows 11 systems.
+
+`InstallationService` handles installing, uninstalling, verifying, and running **Claude Code** (native installer) and **Claude Adapter** (npm) on Windows.
 
 ## Location
+
 `src/ClaudeCodeInstaller.Core/InstallationService.cs`
 
-## Responsibilities
-- Checking system prerequisites (Node.js, Git)
-- Downloading Claude Code installer
-- Installing Claude Code silently
-- Verifying installation
-- Checking for updates
-- Running Claude Code
+## Claude Code (native installer)
 
-## Key Methods
+Claude Code is installed via the official PowerShell script (`irm https://claude.ai/install.ps1 | iex`), not npm. Node.js is **not** required for Claude Code.
 
-### `CheckPrerequisitesAsync()`
-Checks if Node.js is installed (required for Claude Code).
+### Key methods
 
-**Returns:** `Task<bool>` - True if prerequisites are met
+| Method | Description |
+|--------|-------------|
+| `InstallClaudeCodeAsync()` | Runs the official install script. Stops any running `claude`/`claude-code` first. |
+| `VerifyInstallationAsync()` | Checks for `claude.exe` on disk and/or `claude`/`claude-code` on PATH; runs `claude --version` when possible. |
+| `RunClaudeCodeAsync(string? arguments)` | Launches Claude Code. Uses `%USERPROFILE%\.local\bin\claude.exe` when present so it works before PATH is updated. |
+| `UninstallClaudeCodeAsync()` | Stops `claude`/`claude-code` processes, removes `%USERPROFILE%\.local\bin\claude.exe` and `%USERPROFILE%\.local\share\claude`. Supports legacy npm uninstall. |
+| `IsClaudeCodeRunningAsync()` | Returns true if a `claude` or `claude-code` process is running. |
+| `StopClaudeCodeAsync()` | Kills all `claude` and `claude-code` processes. |
 
-### `DownloadClaudeCodeAsync(string? downloadPath, IProgress<int>? progress)`
-Downloads the Claude Code installer from the official source.
+### Prerequisites
 
-**Parameters:**
-- `downloadPath`: Optional path to save the installer (defaults to temp directory)
-- `progress`: Optional progress reporter for download status
+- `CheckPrerequisitesAsync()` — currently only verifies PowerShell is available (always true on Windows 11).
 
-**Returns:** `Task<string>` - Path to downloaded installer
+## Node.js and Claude Adapter
 
-**Throws:** `HttpRequestException` if download fails
+Node.js/npm are required only for **Claude Adapter** (and other npm-based plugins). The app can install Node.js if missing.
 
-### `InstallClaudeCodeAsync(string installerPath)`
-Runs the Claude Code installer silently with administrator privileges.
+| Method | Description |
+|--------|-------------|
+| `CheckNpmAvailableAsync()` | Returns true if `npm --version` succeeds. |
+| `InstallNodeJsAsync(IProgress<int>?, Action<string>?)` | Installs Node.js LTS: tries **winget** (`OpenJS.NodeJS.LTS`), then fallback download of Node LTS MSI from nodejs.org and silent install. Progress and optional log callback. Caller may need to restart app for PATH. |
+| `InstallPluginAsync(string packageName, IProgress<int>?)` | Global `npm install -g` (e.g. `claude-adapter`). Throws if npm not available. |
+| `UninstallPluginAsync(string packageName)` | Global `npm uninstall -g`. Throws if npm not available. |
+| `IsPluginInstalledAsync(string packageName)` | Returns true if `npm list -g <package> --depth=0` contains the package. |
+| `RunClaudeAdapterAsync(string? arguments)` | Runs `claude-adapter` via `cmd.exe /k claude-adapter` (optional arguments). |
 
-**Parameters:**
-- `installerPath`: Path to the installer executable
+## Other methods
 
-**Throws:** `Exception` if installation fails
-
-### `VerifyInstallationAsync()`
-Verifies that Claude Code is properly installed and accessible via command line.
-
-**Returns:** `Task<bool>` - True if installation is verified
-
-### `CheckCommandAsync(string command)`
-Checks if a command is available in the system PATH.
-
-**Parameters:**
-- `command`: Command to check (e.g., "node --version")
-
-**Returns:** `Task<bool>` - True if command is available
-
-### `GetLatestVersionAsync()`
-Retrieves the latest available version of Claude Code.
-
-**Returns:** `Task<string?>` - Latest version string or null if unavailable
-
-### `IsUpdateAvailableAsync(string currentVersion)`
-Checks if an update is available for Claude Code.
-
-**Parameters:**
-- `currentVersion`: Current installed version
-
-**Returns:** `Task<bool>` - True if update is available
-
-### `RunClaudeCodeAsync(string? arguments)`
-Launches Claude Code with optional arguments.
-
-**Parameters:**
-- `arguments`: Optional command-line arguments
-
-### Static Methods
-
-#### `IsWindows11OrLater()`
-Checks if the system is running Windows 11 or later.
-
-**Returns:** `bool` - True if Windows 11+
-
-#### `IsAdministrator()`
-Checks if the current process is running with administrator privileges.
-
-**Returns:** `bool` - True if running as administrator
+| Method | Description |
+|--------|-------------|
+| `CheckCommandAsync(string command)` | Returns true if the command runs (e.g. `npm --version`). |
+| `IsWindows11OrLater()` | Static; true if Windows 10 build ≥ 22000. |
+| `IsAdministrator()` | Static; true if current process is elevated. |
 
 ## Dependencies
-- `System.Net.Http.HttpClient` - For downloading files
-- `System.Diagnostics.Process` - For running processes
-- `System.Runtime.InteropServices` - For OS platform detection
-- `System.Security.Principal` - For privilege checking
 
-## Usage Example
-```csharp
-var service = new InstallationService();
-bool hasPrereqs = await service.CheckPrerequisitesAsync();
-if (hasPrereqs)
-{
-    string installerPath = await service.DownloadClaudeCodeAsync();
-    await service.InstallClaudeCodeAsync(installerPath);
-    bool verified = await service.VerifyInstallationAsync();
-}
-```
+- `HttpClient` — downloads (e.g. Node MSI fallback)
+- `Process` — running installers, npm, claude, winget
+- `RuntimeInformation` / `Environment` — OS and paths
 
-## Error Handling
-All methods throw exceptions on failure. Callers should wrap calls in try-catch blocks.
+## Error handling
 
-## Thread Safety
-This class is not thread-safe. Create separate instances for concurrent operations.
+Methods throw on failure. Callers should use try/catch. Install/run methods may throw with messages like "npm is required..." or "Failed to start Claude Adapter...".
 
-## Notes
-- Downloads are saved to the system temp directory by default
-- Installation requires administrator privileges
-- PATH updates may take a few seconds after installation
+## Thread safety
+
+Not thread-safe. Use one instance per logical flow.

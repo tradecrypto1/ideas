@@ -1,113 +1,63 @@
 # Project Structure
 
 ## Overview
-This project provides a WinForms application for installing and running Claude Code on Windows 11.
 
-## Directory Structure
+WinForms app for installing and running **Claude Code** (native installer) and **Claude Adapter** (npm) on Windows 10/11.
+
+## Directory structure
 
 ```
 ideas/
-├── .cursor/
-│   └── rules/
-│       └── conventional-commits.mdc    # Cursor rules for conventional commits
-├── .github/
-│   └── workflows/
-│       └── ci.yml                       # CI/CD pipeline (build, test, Docker, deploy)
-├── docs/                                # Documentation
-│   ├── CONVENTIONAL_COMMITS.md         # Commit message conventions
-│   ├── TESTING.md                      # Testing guide
-│   ├── InstallationService.md          # Core service documentation
-│   ├── HealthCheckService.md           # Health check documentation
-│   ├── HealthCheckEndpoint.md          # HTTP endpoint documentation
-│   ├── VersionInfo.md                  # Version info documentation
-│   ├── MainForm.md                     # WinForms app documentation
-│   ├── Program-WinForms.md             # WinForms entry point documentation
-│   └── PROJECT_STRUCTURE.md            # This file
-├── src/                                 # Source code
-│   ├── ClaudeCodeInstaller.Core/       # Core library (shared code)
-│   │   ├── InstallationService.cs    # Installation logic
-│   │   ├── HealthCheckService.cs       # Health checking
-│   │   ├── HealthCheckEndpoint.cs      # HTTP health endpoint
-│   │   └── VersionInfo.cs              # Version information
-│   └── ClaudeCodeInstaller.WinForms/   # WinForms application
-│       ├── Program.cs                   # WinForms entry point
-│       └── MainForm.cs                  # Main UI form
-├── tests/                               # Test projects
-│   └── ClaudeCodeInstaller.Tests/      # Unit tests
-│       ├── InstallationServiceTests.cs
-│       └── HealthCheckServiceTests.cs
-├── .dockerignore                       # Docker ignore rules
-├── .gitignore                          # Git ignore rules
-├── build.ps1                           # Build script
-├── ClaudeCodeInstaller.sln              # Solution file
-├── Dockerfile                          # Docker build file
-├── QUICKSTART.md                       # Quick start guide
-├── README.md                           # Main readme
-└── tasks.md                            # Task list
-
+├── .cursor/rules/           # Cursor rules (e.g. conventional commits)
+├── .github/workflows/       # CI/CD (ci.yml: build, test, publish, release)
+├── docs/                   # Documentation
+│   ├── CONVENTIONAL_COMMITS.md
+│   ├── HealthCheckEndpoint.md, HealthCheckService.md, HealthCheckEndpoint.md
+│   ├── InstallationService.md, MainForm.md, Program-WinForms.md
+│   ├── PROJECT_STRUCTURE.md, TESTING.md, VersionInfo.md
+│   └── ...
+├── src/
+│   ├── ClaudeCodeInstaller.Core/    # Core library
+│   │   ├── InstallationService.cs  # Install/uninstall/verify Claude Code; Node.js install; npm/Claude Adapter
+│   │   ├── HealthCheckService.cs, HealthCheckEndpoint.cs
+│   │   ├── InstallerUpdateService.cs
+│   │   └── VersionInfo.cs
+│   └── ClaudeCodeInstaller.WinForms/
+│       ├── Program.cs       # Entry point
+│       └── MainForm.cs      # Main + Advanced tabs (all UI in code)
+├── tests/
+│   └── ClaudeCodeInstaller.Tests/
+├── build.ps1                # Full rebuild: clean, restore, build, test; -Publish → artifacts/winforms
+├── ClaudeCodeInstaller.sln
+├── QUICKSTART.md, README.md
+└── tasks.md
 ```
 
 ## Projects
 
-### ClaudeCodeInstaller.Core
-Shared library containing:
-- Installation logic
-- Health checking
-- Version management
-- HTTP health endpoint
+| Project | Purpose |
+|---------|--------|
+| **ClaudeCodeInstaller.Core** | Installation/uninstall/verify Claude Code; install Node.js; npm plugins (Claude Adapter); health check; installer update. |
+| **ClaudeCodeInstaller.WinForms** | GUI: Main tab (Install/Run/Uninstall Claude Code, Install/Run Claude Adapter, Health Check), Advanced tab (working dir, paths). |
+| **ClaudeCodeInstaller.Tests** | Unit tests (xUnit, FluentAssertions). |
 
-### ClaudeCodeInstaller.WinForms
-Windows Forms application with:
-- Graphical UI
-- Install/Update functionality
-- Version checking
-- Auto-update capability
-- Run Claude Code button
-- Health check feature
-- Detailed logging
+## Build outputs
 
-### ClaudeCodeInstaller.Tests
-Unit tests using:
-- xUnit
-- Moq (mocking)
-- FluentAssertions
+- **Development:** `src/ClaudeCodeInstaller.WinForms/bin/Release/net8.0-windows/win-x64/ClaudeCodeInstaller.WinForms.exe`
+- **Publish:** `.\build.ps1 -Publish` → `artifacts/winforms/` (win-x64, self-contained).
 
-## Build Outputs
+## CI/CD (ci.yml)
 
-### WinForms Application
-- `src/ClaudeCodeInstaller.WinForms/bin/Release/net8.0-windows/win-x64/ClaudeCodeInstaller.WinForms.exe`
+- Checkout, .NET setup, NuGet cache, restore
+- Build with security analyzers; outdated/vulnerable package checks
+- Build solution; publish WinForms to `artifacts/winforms` (single-file)
+- Tests with coverage; Codecov upload
+- Windows Defender scan of artifacts
+- On push to `main`: version from Core csproj, previous tag, changelog, RC tag, GitHub Release with artifacts
 
-## CI/CD Pipeline
+## Features
 
-The GitHub Actions workflow (`.github/workflows/ci.yml`) includes:
-1. **Build**: Compiles all projects
-2. **Test**: Runs unit tests with coverage
-3. **Docker Build**: Creates Docker images
-4. **Version Tag**: Creates RC tags on main branch commits
-5. **Deploy**: Pushes to Azure Container Registry (ACR)
-
-## Key Features
-
-- ✅ Organized source code structure
-- ✅ Comprehensive documentation
-- ✅ Test-driven development
-- ✅ Conventional commits
-- ✅ CI/CD pipeline
-- ✅ Health check endpoint
-- ✅ WinForms installer with GUI
-- ✅ Version checking and auto-update
-- ✅ Runner functionality
-- ✅ RC version tagging
-- ✅ Docker support
-- ✅ ACR deployment ready
-
-## Development Workflow
-
-1. Make changes following conventional commits
-2. Write/update tests
-3. Build: `dotnet build`
-4. Test: `dotnet test`
-5. Commit with conventional commit message
-6. Push triggers CI/CD pipeline
-7. RC tag created automatically
-8. Docker image built and pushed to ACR
+- Claude Code: native install, run, uninstall, verification (no Node.js)
+- Claude Adapter: npm install/run; optional Node.js LTS install (winget/MSI)
+- Advanced: working directory, path diagnostics
+- Health check, installer self-update, RC tagging, releases

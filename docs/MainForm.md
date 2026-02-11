@@ -1,68 +1,50 @@
-# MainForm (WinForms Application)
+# MainForm (WinForms)
 
 ## Overview
-Windows Forms application providing a graphical interface for installing, updating, and running Claude Code on Windows 11.
+
+Main UI for the Claude Code Installer & Runner: install/run Claude Code, install/run Claude Adapter, advanced settings, health check.
 
 ## Location
+
 `src/ClaudeCodeInstaller.WinForms/MainForm.cs`
 
-## Features
-- **Install/Update**: Download and install Claude Code
-- **Run**: Launch Claude Code directly from the application
-- **Check Updates**: Verify if newer versions are available
-- **Health Check**: Comprehensive system health verification
-- **Progress Tracking**: Visual progress bar and status updates
-- **Logging**: Detailed log output for troubleshooting
+## Tabs
 
-## UI Components
+### Main tab
 
-### Buttons
-- **Install/Update Claude Code**: Initiates installation or update process
-- **Run Claude Code**: Launches Claude Code (enabled when installed)
-- **Check for Updates**: Checks for newer versions
-- **Health Check**: Performs system health verification
+| Control | Purpose |
+|--------|---------|
+| **Install/Update Claude Code** | Runs official native installer; enables Run when done. |
+| **Run Claude Code** | Launches Claude Code (enabled when installed). |
+| **Check for Updates** | Checks for newer installer release; can update the app. |
+| **Uninstall Claude Code** | Red button; removes Claude Code (enabled when installed). |
+| **Install Claude Adapter** | Blue; npm global install of `claude-adapter`. If Node.js is missing, offers to install Node.js LTS. |
+| **Run Claude Adapter** | Green; runs `claude-adapter` in a console (enabled when adapter installed). |
+| **Health Check** | Reports install status, paths, OS. |
+| **Version / status / progress / log** | Installer version, status text, progress bar, log text box. |
 
-### Status Elements
-- **Version Label**: Shows installer version
-- **Status Label**: Current operation status
-- **Progress Bar**: Visual progress indicator
-- **Log Text Box**: Detailed operation logs
+### Advanced tab
 
-## Installation Process
+- **Working directory** — path used for running tools; can browse and save.
+- **Paths** — diagnostic (e.g. Node, npm, Claude) via `InstallationService`.
 
-1. Checks for updates (if updating)
-2. Verifies prerequisites (Node.js)
-3. Downloads Claude Code installer
-4. Installs silently
-5. Verifies installation
-6. Enables Run button on success
+## Initialization
 
-## Update Detection
+- Constructor: sets version from assembly, loads working directory, calls `InitializeComponent()`, `InitializeMainTab()`, `InitializeAdvancedTab()`, then creates `InstallationService`, `HealthCheckService`, `InstallerUpdateService`.
+- `MainForm_Load`: fire-and-forget `LoadInitialStateAsync()` (verify Claude Code, adapter, enable/disable buttons) and `CheckInstallerUpdateAsync()`.
 
-- Checks for newer versions on startup
-- Prompts user to update if available
-- Uninstalls current version before installing new one
+## Key flows
 
-## Health Check
-
-Provides comprehensive system status:
-- Claude Code installation status
-- Prerequisites availability
-- OS version compatibility
-- Administrator privileges
+- **Install Claude Code:** Install button → stop if running → run official PowerShell install script → verify → enable Run/Uninstall.
+- **Install Claude Adapter:** If npm missing → prompt “Install Node.js LTS now?” → `InstallNodeJsAsync` (winget or MSI) → recheck npm; if still missing, ask user to restart app. Then `InstallPluginAsync("claude-adapter")` and enable Run Claude Adapter.
+- **Uninstall:** Red button → stop Claude Code → remove install dir/exe → refresh UI.
 
 ## Dependencies
-- `ClaudeCodeInstaller.Core` - Core installation logic
-- `System.Windows.Forms` - WinForms UI framework
 
-## Usage
-Double-click the executable or run from command line:
-```powershell
-.\ClaudeCodeInstaller.WinForms.exe
-```
+- `ClaudeCodeInstaller.Core` — `InstallationService`, `HealthCheckService`, `InstallerUpdateService`
+- `System.Windows.Forms`
 
 ## Notes
-- Provides user-friendly GUI for installing and running Claude Code
-- Can run Claude Code without opening terminal
-- Shows detailed logs for troubleshooting
-- Automatically checks for updates
+
+- All UI is built in code (`InitializeMainTab`, `InitializeAdvancedTab`); no separate designer file.
+- Run Claude Code uses full path to `claude.exe` when present so it works before PATH is updated.
