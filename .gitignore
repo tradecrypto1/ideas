@@ -23,7 +23,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
-
+tasks.md
 # Visual Studio cache/options directory
 .vs/
 
